@@ -1,6 +1,6 @@
 # Codebase Architecture & Mathematical Foundations
 
-This document provides a technical walkthrough of the architecture, design patterns, and mathematical calculations driving the MS Build 3D Web Editor.
+This document provides a technical walkthrough of the architecture, design patterns, and mathematical calculations driving the MySolidBuilder 3D Web Editor.
 
 ---
 

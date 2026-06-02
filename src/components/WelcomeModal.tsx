@@ -45,7 +45,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose, eng
               <Sparkles size={20} color="#07080a" />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>MS BUILD 3D Modeling</h2>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>MYSOLIDBUILDER 3D</h2>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: 0 }}>Next-Gen web-based 3D CAD & SketchUp engine</p>
             </div>
           </div>

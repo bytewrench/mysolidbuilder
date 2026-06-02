@@ -1,6 +1,6 @@
-# MS Build 3D Web Editor
+# MySolidBuilder 3D Web Editor
 
-> A next-generation, high-fidelity web-based 3D modeling application inspired by SketchUp and MS Build. Built with **React**, **TypeScript**, and **Three.js (WebGL)**.
+> A next-generation, high-fidelity web-based 3D modeling application inspired by SketchUp and MySolidBuilder. Built with **React**, **TypeScript**, and **Three.js (WebGL)**.
 
 ---
 
@@ -78,8 +78,8 @@ The application is built on the **Engine-UI Separation pattern**, keeping logica
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/bytewrench/MSBuild-private.git
-   cd MSBuild
+   git clone https://github.com/bytewrench/mysolidbuilder-private.git
+   cd mysolidbuilder
    ```
 2. Install dependencies:
    ```bash
