@@ -16,9 +16,10 @@ import {
 interface TopbarProps {
   engine: EditorEngine | null;
   onOpenHelp: () => void;
+  onExit: () => void;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp }) => {
+export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit }) => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -184,7 +185,11 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp }) => {
     }}>
       
       {/* Brand Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div 
+        style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+        onClick={onExit}
+        title="Exit to Landing Page"
+      >
         <div style={{
           background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))',
           width: '32px',
@@ -199,7 +204,7 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp }) => {
         </div>
         <div>
           <h1 style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '0.5px', margin: 0, display: 'inline-block' }}>
-            MS<span style={{ color: 'var(--accent-cyan)' }}>BUILD</span>
+            MYSOLID<span style={{ color: 'var(--accent-cyan)' }}>BUILDER</span>
           </h1>
           <span style={{ 
             fontSize: '0.625rem', 

@@ -5,10 +5,12 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { MeasurementsHUD } from './components/MeasurementsHUD';
 import { WelcomeModal } from './components/WelcomeModal';
+import { LandingPage } from './components/LandingPage';
 import { EditorEngine } from './engine/EditorEngine';
 import { HelpCircle, Sparkles } from 'lucide-react';
 
 function App() {
+  const [view, setView] = useState<'landing' | 'app'>('landing');
   const [engine, setEngine] = useState<EditorEngine | null>(null);
   const [isWelcomeOpen, setIsWelcomeOpen] = useState(true);
   const [tutorialStep, setTutorialStep] = useState<string | null>(null);
@@ -34,10 +36,14 @@ function App() {
     };
   }, [engine, tutorialStep]);
 
+  if (view === 'landing') {
+    return <LandingPage onLaunch={() => setView('app')} />;
+  }
+
   return (
     <div className="workspace-container">
       {/* Top Navigation */}
-      <Topbar engine={engine} onOpenHelp={() => setIsWelcomeOpen(true)} />
+      <Topbar engine={engine} onOpenHelp={() => setIsWelcomeOpen(true)} onExit={() => setView('landing')} />
 
       {/* Main Workspace Layout */}
       <div className="main-layout">
