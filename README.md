@@ -1,73 +1,100 @@
-# React + TypeScript + Vite
+# MS Build 3D Web Editor
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> A next-generation, high-fidelity web-based 3D modeling application inspired by SketchUp and MS Build. Built with **React**, **TypeScript**, and **Three.js (WebGL)**.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Key Features
 
-## React Compiler
+* **Advanced 3D Viewport**: High-performance WebGL scene rendering with fog depth, ambient and directional soft shadows, grid helpers, and standard coordinate axes.
+* **SketchUp-Style Push-Pull (Extrude)**: Interactive face extrusion using mouse vector projections and dot-product offsets. Scaled geometries dynamically shift position vectors to anchor the opposite face in place.
+* **Real-time Value Control Box (VCB) HUD**: Live coordinate viewer, extrusion depth tracker, and 3D mesh volume calculator that updates dynamically as you drag gizmos or scale meshes.
+* **Interactive Guided Tutorial ("Help Me")**: Floating instructional cards coupled with pulsating neon buttons, cursor highlighting, and fade-out cyan selection glows.
+* **Full Transform Controls**: Precise handles for translating, rotating, and scaling meshes along X, Y, and Z axes, with configurable grid snapping increments.
+* **Command-Pattern History**: Deep undo/redo state stack tracking additions, translations, paint styles, and object deletions.
+* **Advanced Materials Finishes**: Matte, Metallic, Standard, and transparent physical refraction Glass finishes with a 10-color swatches palette and custom color pickers.
+* **Project Exporter**: Instant JSON local storage backup and GLTF 3D exporter with canvas-confetti particle celebrations.
+* **Starter Templates**: Interactive templates to load structuredCastle Keeps, Cozy Living Rooms, and recreational Playgrounds.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## ⌨️ Controls & Shortcuts
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Viewport Navigation
+* **Rotate/Orbit Camera**: Left-Click + Drag (Select tool) OR Right-Click + Drag
+* **Pan Camera**: Shift + Right-Click + Drag OR Middle-Click + Drag
+* **Zoom**: Scroll Wheel
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Keyboard Hotkeys
+| Key | Action |
+|---|---|
+| `Q` | Activate **Select** Tool |
+| `W` | Activate **Move/Translate** Tool |
+| `E` | Activate **Rotate** Tool |
+| `R` | Activate **Scale** Tool |
+| `T` | Activate **Push-Pull (Extrude)** Tool |
+| `Escape` | Clear current selection |
+| `Delete` / `Backspace` | Delete active object |
+| `Ctrl + Z` | Undo last operation |
+| `Ctrl + Y` | Redo last operation |
+| `Ctrl + D` | Duplicate selected mesh |
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## 🛠️ Tech Stack & Architecture
+
+The application is built on the **Engine-UI Separation pattern**, keeping logical and visual concerns decoupled for rendering efficiency:
+
+```
+  ┌─────────────────────────────────────────────────────────┐
+  │                       React UI                          │
+  │     (Topbar, Sidebar, Toolbar, Welcome, Measurements)   │
+  └───────────────────────────┬─────────────────────────────┘
+                              │ API Calls & Event Listeners
+                              ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │                 Editor Engine Core                      │
+  │                  (EditorEngine.ts)                      │
+  └───────┬───────────────────┬───────────────────┬─────────┘
+          ▼                   ▼                   ▼
+  ┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+  │   Three.js    │   │History Manager│   │Template Maker │
+  │ (Scene Graph) │   │ (Undo/Redo)   │   │  (Presets)    │
+  └───────────────┘   └───────────────┘   └───────────────┘
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1. **Vite + React + TypeScript**: Handles rendering of the control deck, sidebar inputs, scene tree list, dialog frames, and styling properties.
+2. **EditorEngine Core**: Coordinates direct Three.js scene actions, renderer dimensions, raycasting, cameras, lights, and selection helpers.
+3. **HistoryManager**: Implements the Command pattern where each workspace operation (translate, scale, color, add, delete) records its execute and undo instructions.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+---
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 📥 Getting Started
+
+### Prerequisites
+* [Node.js](https://nodejs.org/) (v16+)
+* [npm](https://www.npmjs.com/)
+
+### Installation
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/bytewrench/MSBuild-private.git
+   cd MSBuild
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Spin up the development server:
+   ```bash
+   npm run dev
+   ```
+4. Build for production:
+   ```bash
+   npm run build
+   ```
+
+---
+
+## 📝 License
+Proprietary. Developed by bytewrench and Antigravity AI.
