@@ -1,0 +1,136 @@
+{
+  "application": "MS Build 3D Web Editor",
+  "log_format": "Shorthand Plain English Dictation",
+  "lifecycle_steps": [
+    {
+      "phase": "Dev Server Boot",
+      "step_number": 1,
+      "description": "User runs command npm run dev. Vite reads configuration, bundles entry points, and starts local web server on port 5173."
+    },
+    {
+      "phase": "HTML Request",
+      "step_number": 2,
+      "description": "Browser requests root URL. Server returns index.html. Browser parses header meta tags, sets page title, and fetches CSS styles."
+    },
+    {
+      "phase": "Script Loading",
+      "step_number": 3,
+      "description": "Browser encounters module script main.tsx. Fetches React core files, Lucide icons, Three.js modules, and index.css stylesheet."
+    },
+    {
+      "phase": "React Mount",
+      "step_number": 4,
+      "description": "main.tsx executes. React DOM finds div with ID root in HTML. Mounts main App component in StrictMode."
+    },
+    {
+      "phase": "App Component Initial State",
+      "step_number": 5,
+      "description": "App component runs. Sets up state variables for EditorEngine instance (starts as null) and WelcomeModal visibility (starts as true)."
+    },
+    {
+      "phase": "UI Assembly",
+      "step_number": 6,
+      "description": "App renders layout: Topbar on top, viewport container in middle, Sidebar panel on right, Toolbar docked at bottom, and WelcomeModal overlay."
+    },
+    {
+      "phase": "Viewport Canvas Setup",
+      "step_number": 7,
+      "description": "Viewport component mounts. Identifies canvas element in DOM. Binds keydown event listener to capture Q/W/E/R/T/Delete/Backspace/Escape shortcuts."
+    },
+    {
+      "phase": "3D Engine Construction",
+      "step_number": 8,
+      "description": "Viewport instantiates EditorEngine class, passing canvas reference. Engine configures WebGLRenderer, sets device pixel ratio, and turns on shadows."
+    },
+    {
+      "phase": "3D Scene Initialization",
+      "step_number": 9,
+      "description": "Engine creates THREE.Scene. Configures dark blue background color. Sets up exponential fog to give camera view depth."
+    },
+    {
+      "phase": "3D Camera Initialization",
+      "step_number": 10,
+      "description": "Engine instantiates THREE.PerspectiveCamera. Places camera at position (15, 12, 20) looking down toward coordinate center."
+    },
+    {
+      "phase": "Scene Lighting Setup",
+      "step_number": 11,
+      "description": "Engine adds lights: Ambient light (overall fill), directional shadow-casting sunlight with 2048px shadow map size, and blue/purple fill lights for visual styling."
+    },
+    {
+      "phase": "Grid & Coordinate Helpers",
+      "step_number": 12,
+      "description": "Engine spawns 100x100 grid helper with low opacity lines. Spawns X (red), Y (green), Z (blue) center axes lines to mark world center."
+    },
+    {
+      "phase": "Interactive Controls Hookup",
+      "step_number": 13,
+      "description": "Engine instantiates OrbitControls for camera navigation. Instantiates TransformControls for moving/rotating/scaling selected shapes. Registers drag-finish command logging callbacks."
+    },
+    {
+      "phase": "Event Listeners Registration",
+      "step_number": 14,
+      "description": "Engine registers pointerdown on canvas. Registers pointermove and pointerup on window. Listens to resize events to resize renderer dynamically."
+    },
+    {
+      "phase": "Animation Loop Launch",
+      "step_number": 15,
+      "description": "Engine triggers animate loop using requestAnimationFrame. Constantly updates orbit damping, updates selection boxes, and renders scene at 60 FPS."
+    },
+    {
+      "phase": "React Engine Binding",
+      "step_number": 16,
+      "description": "Viewport fires onEngineReady callback with EditorEngine instance. App sets engine state. Topbar, Toolbar, and Sidebar receive engine instance."
+    },
+    {
+      "phase": "UI State Listeners",
+      "step_number": 17,
+      "description": "Topbar, Toolbar, and Sidebar register listener functions on the engine for history-changed, tool-changed, selection-changed, object-modified, and scene-changed events."
+    },
+    {
+      "phase": "Welcome & Template Picker Display",
+      "step_number": 18,
+      "description": "WelcomeModal displays template options. User clicks on 'Tiny Castle Keep' template to populate empty space."
+    },
+    {
+      "phase": "Template Mesh Loading",
+      "step_number": 19,
+      "description": "Engine runs TemplateManager. Spawns stone blocks, corner cylinders, conical tower roofs, and gate door. Adds meshes to scene, enables shadows, and clears history."
+    },
+    {
+      "phase": "Scene Update Dispatch",
+      "step_number": 20,
+      "description": "Engine dispatches scene-changed event. Sidebar receives list of meshes and updates the hierarchy list. WelcomeModal closes. App is up and running."
+    },
+    {
+      "phase": "Hover Outline Trigger",
+      "step_number": 21,
+      "description": "User moves mouse over keep wall. pointermove raycasts mesh. Engine creates temporary BoxHelper outline in yellow to highlight object."
+    },
+    {
+      "phase": "Select Object",
+      "step_number": 22,
+      "description": "User left-clicks tower. pointerdown intersects mesh. Engine sets selectedObject state. Spawns cyan BoxHelper outline. Attaches TransformControls gizmo. Sidebar updates transform fields."
+    },
+    {
+      "phase": "Object Translation",
+      "step_number": 23,
+      "description": "User drags translate handle. Mesh moves. Sidebar values refresh in real-time. Drag release fires. TransformCommand pushes to HistoryManager stack. Undo gets enabled."
+    },
+    {
+      "phase": "Extrusion Push-Pull Drag",
+      "step_number": 24,
+      "description": "User selects Push-Pull tool, clicks wall top face, and drags up. pointermove projects displacement along Y axis. Engine scales mesh Y size, shifts position up by half delta to anchor bottom, and commits command on release."
+    },
+    {
+      "phase": "Material Finish & Color Painting",
+      "step_number": 25,
+      "description": "User selects paint tool, changes color to cyber cyan, finish to metal, and clicks gate. Mesh gets updated. Color change logs to history."
+    },
+    {
+      "phase": "3D GLTF Export",
+      "step_number": 26,
+      "description": "User clicks 'Export 3D' button. Engine compiles custom meshes into GLTF string. Downloader prompts browser download. Confetti explosion particles burst across screen."
+    }
+  ]
+}
