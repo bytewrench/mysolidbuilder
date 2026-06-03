@@ -18,7 +18,8 @@ import {
   X,
   Activity,
   Trash2,
-  HardDrive
+  HardDrive,
+  Layers
 } from 'lucide-react';
 import * as THREE from 'three';
 
@@ -362,6 +363,13 @@ function App() {
     }
   };
 
+  // 6.5 File -> Export DXF
+  const handleExportDXF = () => {
+    if (!engine) return;
+    setIsLeftMenuOpen(false);
+    engine.exportDXF();
+  };
+
   // 7. File -> About this model
   const handleAboutClick = () => {
     if (!engine) return;
@@ -572,6 +580,11 @@ function App() {
               <button className="left-drawer-menu-item" onClick={handlePrintPaper}>
                 <Printer size={16} />
                 <span>Print on paper</span>
+              </button>
+
+              <button className="left-drawer-menu-item" onClick={handleExportDXF}>
+                <Layers size={16} />
+                <span>Export 2D Layout (DXF)</span>
               </button>
 
               <button className="left-drawer-menu-item" onClick={handleAboutClick}>

@@ -318,15 +318,25 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onTo
 
           <div style={{ width: '1px', height: '18px', background: 'var(--border-light)', margin: '0 4px' }} />
 
-          {/* Export button */}
+          {/* Export buttons */}
           <button 
             className="btn-action primary tooltip" 
             onClick={() => engine?.exportGLTF()}
             style={{ height: '34px', padding: '0 12px', fontSize: '0.8rem' }}
-            data-tooltip="Export as GLTF file"
+            data-tooltip="Export as GLTF 3D model"
           >
             <Download size={14} />
-            <span>Export 3D</span>
+            <span>Export GLTF</span>
+          </button>
+
+          <button 
+            className="btn-action tooltip" 
+            onClick={() => engine?.exportDXF()}
+            style={{ height: '34px', padding: '0 12px', fontSize: '0.8rem', borderColor: 'var(--accent-cyan)', color: 'var(--accent-cyan)' }}
+            data-tooltip="Export as 2D DXF CAD layout for plotting"
+          >
+            <Download size={14} />
+            <span>Export DXF (2D)</span>
           </button>
 
         </div>
@@ -413,95 +423,104 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onTo
             {activeEditAction === null ? (
               // Main Edit Options
               <>
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => setActiveEditAction('simplify')}
-                  disabled={!selectedMesh}
-                  title="Reduce polygon count"
-                >
-                  <Activity size={14} />
-                  <span>Simplify</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to simplify" : "Simplify: Reduce polygon count"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => setActiveEditAction('simplify')}
+                    disabled={!selectedMesh}
+                  >
+                    <Activity size={14} />
+                    <span>Simplify</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => setActiveEditAction('split')}
-                  disabled={!selectedMesh}
-                  title="Cut mesh along plane"
-                >
-                  <Grid size={14} />
-                  <span>Split</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to split" : "Split: Cut mesh along plane"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => setActiveEditAction('split')}
+                    disabled={!selectedMesh}
+                  >
+                    <Grid size={14} />
+                    <span>Split</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => setActiveEditAction('smooth')}
-                  disabled={!selectedMesh}
-                  title="Relax mesh vertices"
-                >
-                  <Sparkles size={14} />
-                  <span>Smooth</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to smooth" : "Smooth: Relax mesh vertices"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => setActiveEditAction('smooth')}
+                    disabled={!selectedMesh}
+                  >
+                    <Sparkles size={14} />
+                    <span>Smooth</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => setActiveEditAction('emboss')}
-                  disabled={!selectedMesh}
-                  title="Project 3D text onto surface"
-                >
-                  <Palette size={14} />
-                  <span>Emboss</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to emboss" : "Emboss: Project 3D text onto surface"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => setActiveEditAction('emboss')}
+                    disabled={!selectedMesh}
+                  >
+                    <Palette size={14} />
+                    <span>Emboss</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => engine?.extrudeDownSelected()}
-                  disabled={!selectedMesh}
-                  title="Extend downward faces to floor"
-                >
-                  <Download size={14} />
-                  <span>Extrude down</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to extrude down" : "Extrude down: Extend downward faces to floor"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => engine?.extrudeDownSelected()}
+                    disabled={!selectedMesh}
+                  >
+                    <Download size={14} />
+                    <span>Extrude down</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => engine?.mergeSelected()}
-                  disabled={!engine || engine.selectedObjects.length < 2}
-                  title="Union Boolean operation"
-                >
-                  <Layers size={14} />
-                  <span>Merge</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!engine || engine.selectedObjects.length < 2 ? "Select 2 or more overlapping shapes to merge" : "Merge: Union Boolean operation"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => engine?.mergeSelected()}
+                    disabled={!engine || engine.selectedObjects.length < 2}
+                  >
+                    <Layers size={14} />
+                    <span>Merge</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => engine?.intersectSelected()}
-                  disabled={!engine || engine.selectedObjects.length < 2}
-                  title="Intersection Boolean operation"
-                >
-                  <Box size={14} />
-                  <span>Intersect</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!engine || engine.selectedObjects.length < 2 ? "Select 2 or more overlapping shapes to intersect" : "Intersect: Intersection Boolean operation"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => engine?.intersectSelected()}
+                    disabled={!engine || engine.selectedObjects.length < 2}
+                  >
+                    <Box size={14} />
+                    <span>Intersect</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => engine?.subtractSelected()}
-                  disabled={!engine || engine.selectedObjects.length < 2}
-                  title="Subtraction Boolean operation"
-                >
-                  <Ungroup size={14} />
-                  <span>Subtract</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!engine || engine.selectedObjects.length < 2 ? "Select 2 or more shapes to subtract (primary minus others)" : "Subtract: Subtraction Boolean operation"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => engine?.subtractSelected()}
+                    disabled={!engine || engine.selectedObjects.length < 2}
+                  >
+                    <Ungroup size={14} />
+                    <span>Subtract</span>
+                  </button>
+                </div>
 
-                <button 
-                  className="btn-toolbar-toggle"
-                  onClick={() => setActiveEditAction('hollow')}
-                  disabled={!selectedMesh}
-                  title="Shell mesh with thickness"
-                >
-                  <Box size={14} />
-                  <span>Hollow</span>
-                </button>
+                <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh ? "Select a shape to hollow" : "Hollow: Shell mesh with thickness"}>
+                  <button 
+                    className="btn-toolbar-toggle"
+                    onClick={() => setActiveEditAction('hollow')}
+                    disabled={!selectedMesh}
+                  >
+                    <Box size={14} />
+                    <span>Hollow</span>
+                  </button>
+                </div>
               </>
             ) : (
               // Parameter overlays for active actions

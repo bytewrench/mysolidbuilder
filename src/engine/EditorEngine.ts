@@ -188,7 +188,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
 
     this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
     this.transformControls.size = 0.8;
-    this.scene.add(this.transformControls.getHelper());
+    this.scene.add(this.transformControls as any);
 
     // Prevent orbit controls from moving while transform controls are dragged
     this.transformControls.addEventListener('dragging-changed', (event) => {
@@ -2039,6 +2039,85 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       },
       { binary: false }
     );
+  }
+
+  public exportDXF() {
+    const meshes = this.getMeshes();
+    if (meshes.length === 0) {
+      alert("Scene is empty. Add shapes before exporting.");
+      return;
+    }
+
+    let dxfContent = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n";
+
+    // Keep track of exported lines to avoid duplicates
+    const exportedLines = new Set<string>();
+    const roundVal = (v: number) => parseFloat(v.toFixed(4));
+
+    meshes.forEach((obj) => {
+      obj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const geom = child.geometry;
+          const matrix = child.matrixWorld;
+          const posAttr = geom.getAttribute('position');
+          if (!posAttr) return;
+
+          let indices: ArrayLike<number> | null = null;
+          if (geom.index) {
+            indices = geom.index.array;
+          }
+
+          const count = indices ? indices.length : posAttr.count;
+
+          for (let i = 0; i < count; i += 3) {
+            const idx0 = indices ? indices[i] : i;
+            const idx1 = indices ? indices[i + 1] : i + 1;
+            const idx2 = indices ? indices[i + 2] : i + 2;
+
+            const v0 = new THREE.Vector3(posAttr.getX(idx0), posAttr.getY(idx0), posAttr.getZ(idx0)).applyMatrix4(matrix);
+            const v1 = new THREE.Vector3(posAttr.getX(idx1), posAttr.getY(idx1), posAttr.getZ(idx1)).applyMatrix4(matrix);
+            const v2 = new THREE.Vector3(posAttr.getX(idx2), posAttr.getY(idx2), posAttr.getZ(idx2)).applyMatrix4(matrix);
+
+            // Project to 2D (X-Y plane, looking from front)
+            const addLine = (pA: THREE.Vector3, pB: THREE.Vector3) => {
+              const ax = roundVal(pA.x);
+              const ay = roundVal(pA.y);
+              const bx = roundVal(pB.x);
+              const by = roundVal(pB.y);
+
+              // Don't add zero-length lines
+              if (Math.abs(ax - bx) < 1e-4 && Math.abs(ay - by) < 1e-4) return;
+
+              // Unique key (sort coords to treat A->B and B->A as same)
+              const key = ax < bx || (ax === bx && ay < by)
+                ? `${ax},${ay}_${bx},${by}`
+                : `${bx},${by}_${ax},${ay}`;
+
+              if (exportedLines.has(key)) return;
+              exportedLines.add(key);
+
+              // Write line entity in DXF
+              dxfContent += "0\nLINE\n8\n0\n"; // Entity type LINE, Layer 0
+              dxfContent += `10\n${ax}\n20\n${ay}\n30\n0.0\n`; // Start point (X, Y, Z=0)
+              dxfContent += `11\n${bx}\n21\n${by}\n31\n0.0\n`; // End point (X, Y, Z=0)
+            };
+
+            addLine(v0, v1);
+            addLine(v1, v2);
+            addLine(v2, v0);
+          }
+        }
+      });
+    });
+
+    dxfContent += "0\nENDSEC\n0\nEOF\n";
+
+    this.downloadFile(dxfContent, 'layout-export.dxf', 'image/vnd.dxf');
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
   }
 
   private downloadFile(content: string, fileName: string, contentType: string) {

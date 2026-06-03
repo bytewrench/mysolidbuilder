@@ -171,27 +171,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
           
-          <button 
-            className="btn-action tooltip"
-            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
-            onClick={() => engine?.groupSelected()}
-            disabled={selectedCount < 2}
-            data-tooltip="Group Selected Objects"
-          >
-            <Layers size={14} />
-            <span>Group</span>
-          </button>
+          <div className="tooltip" style={{ display: 'flex' }} data-tooltip={selectedCount < 2 ? "Select 2 or more shapes to group" : "Group selected objects"}>
+            <button 
+              className="btn-action"
+              style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center', width: '100%' }}
+              onClick={() => engine?.groupSelected()}
+              disabled={selectedCount < 2}
+            >
+              <Layers size={14} />
+              <span>Group</span>
+            </button>
+          </div>
 
-          <button 
-            className="btn-action tooltip"
-            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
-            onClick={() => engine?.ungroupSelected()}
-            disabled={!selectedMesh || !(selectedMesh instanceof THREE.Group)}
-            data-tooltip="Ungroup Group Container"
-          >
-            <FolderClosed size={14} />
-            <span>Ungroup</span>
-          </button>
+          <div className="tooltip" style={{ display: 'flex' }} data-tooltip={!selectedMesh || !(selectedMesh instanceof THREE.Group) ? "Select a grouped item to ungroup" : "Ungroup group container"}>
+            <button 
+              className="btn-action"
+              style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center', width: '100%' }}
+              onClick={() => engine?.ungroupSelected()}
+              disabled={!selectedMesh || !(selectedMesh instanceof THREE.Group)}
+            >
+              <FolderClosed size={14} />
+              <span>Ungroup</span>
+            </button>
+          </div>
 
           <button 
             className="btn-action"

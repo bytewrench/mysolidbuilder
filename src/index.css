@@ -1124,6 +1124,17 @@ body {
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
 }
 
+.btn-toolbar-toggle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+
+.btn-toolbar-toggle:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+}
+
 /* Left Drawer Styles */
 .left-drawer-overlay {
   position: fixed;
