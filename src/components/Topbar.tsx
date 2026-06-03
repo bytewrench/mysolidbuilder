@@ -7,7 +7,6 @@ import {
   Redo2, 
   Grid, 
   Sparkles, 
-  Trash2, 
   HelpCircle, 
   Download, 
   Menu,
@@ -18,7 +17,8 @@ import {
   Box,
   Ungroup,
   Layers,
-  Copy
+  Check,
+  X
 } from 'lucide-react';
 
 interface TopbarProps {
@@ -53,6 +53,35 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onTo
   const [color, setColor] = useState('#3b82f6');
   const [materialStyle, setMaterialStyle] = useState<MaterialStyle>('standard');
   const [selectedMesh, setSelectedMesh] = useState<THREE.Object3D | null>(null);
+
+  // Edit Action States
+  const [activeEditAction, setActiveEditAction] = useState<'simplify' | 'split' | 'smooth' | 'emboss' | 'hollow' | null>(null);
+  const [simplifyRatio, setSimplifyRatio] = useState<number>(0.5);
+  const [splitRatio, setSplitRatio] = useState<number>(0.5);
+  const [splitKeepMode, setSplitKeepMode] = useState<'top' | 'bottom' | 'both'>('both');
+  const [smoothFactor, setSmoothFactor] = useState<number>(0.5);
+  const [smoothIterations, setSmoothIterations] = useState<number>(2);
+  const [embossText, setEmbossText] = useState<string>('BUILDER');
+  const [embossSize, setEmbossSize] = useState<number>(1.0);
+  const [embossDepth, setEmbossDepth] = useState<number>(0.2);
+  const [hollowThickness, setHollowThickness] = useState<number>(0.1);
+
+  // Split view sync
+  useEffect(() => {
+    if (activeEditAction === 'split' && engine) {
+      engine.showCuttingPlane(splitRatio);
+    } else {
+      engine?.hideCuttingPlane();
+    }
+  }, [activeEditAction, splitRatio, engine]);
+
+  // Tab change cleanup
+  useEffect(() => {
+    if (activeTab !== 'edit') {
+      setActiveEditAction(null);
+      engine?.hideCuttingPlane();
+    }
+  }, [activeTab, engine]);
 
   useEffect(() => {
     if (!engine) return;
@@ -186,9 +215,6 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onTo
       }
     }
   };
-
-  const handleGroup = () => engine?.groupSelected();
-  const handleUngroup = () => engine?.ungroupSelected();
 
   return (
     <header className="glass-panel" style={{ 
@@ -384,42 +410,280 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onTo
         {/* EDIT TAB TOOLBAR */}
         {activeTab === 'edit' && (
           <>
-            <button 
-              className="btn-toolbar-toggle"
-              onClick={handleGroup}
-              disabled={!engine || engine.selectedObjects.length < 2}
-            >
-              <Box size={14} />
-              <span>Group Selection</span>
-            </button>
+            {activeEditAction === null ? (
+              // Main Edit Options
+              <>
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => setActiveEditAction('simplify')}
+                  disabled={!selectedMesh}
+                  title="Reduce polygon count"
+                >
+                  <Activity size={14} />
+                  <span>Simplify</span>
+                </button>
 
-            <button 
-              className="btn-toolbar-toggle"
-              onClick={handleUngroup}
-              disabled={!selectedMesh || !(selectedMesh instanceof THREE.Group)}
-            >
-              <Ungroup size={14} />
-              <span>Ungroup Selection</span>
-            </button>
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => setActiveEditAction('split')}
+                  disabled={!selectedMesh}
+                  title="Cut mesh along plane"
+                >
+                  <Grid size={14} />
+                  <span>Split</span>
+                </button>
 
-            <button 
-              className="btn-toolbar-toggle"
-              onClick={() => engine?.duplicateSelected()}
-              disabled={!selectedMesh}
-            >
-              <Copy size={14} />
-              <span>Duplicate</span>
-            </button>
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => setActiveEditAction('smooth')}
+                  disabled={!selectedMesh}
+                  title="Relax mesh vertices"
+                >
+                  <Sparkles size={14} />
+                  <span>Smooth</span>
+                </button>
 
-            <button 
-              className="btn-toolbar-toggle"
-              onClick={() => engine?.deleteSelected()}
-              disabled={!selectedMesh}
-              style={{ color: '#ef4444' }}
-            >
-              <Trash2 size={14} />
-              <span>Delete</span>
-            </button>
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => setActiveEditAction('emboss')}
+                  disabled={!selectedMesh}
+                  title="Project 3D text onto surface"
+                >
+                  <Palette size={14} />
+                  <span>Emboss</span>
+                </button>
+
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => engine?.extrudeDownSelected()}
+                  disabled={!selectedMesh}
+                  title="Extend downward faces to floor"
+                >
+                  <Download size={14} />
+                  <span>Extrude down</span>
+                </button>
+
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => engine?.mergeSelected()}
+                  disabled={!engine || engine.selectedObjects.length < 2}
+                  title="Union Boolean operation"
+                >
+                  <Layers size={14} />
+                  <span>Merge</span>
+                </button>
+
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => engine?.intersectSelected()}
+                  disabled={!engine || engine.selectedObjects.length < 2}
+                  title="Intersection Boolean operation"
+                >
+                  <Box size={14} />
+                  <span>Intersect</span>
+                </button>
+
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => engine?.subtractSelected()}
+                  disabled={!engine || engine.selectedObjects.length < 2}
+                  title="Subtraction Boolean operation"
+                >
+                  <Ungroup size={14} />
+                  <span>Subtract</span>
+                </button>
+
+                <button 
+                  className="btn-toolbar-toggle"
+                  onClick={() => setActiveEditAction('hollow')}
+                  disabled={!selectedMesh}
+                  title="Shell mesh with thickness"
+                >
+                  <Box size={14} />
+                  <span>Hollow</span>
+                </button>
+              </>
+            ) : (
+              // Parameter overlays for active actions
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
+                
+                {/* 1. Simplify parameters */}
+                {activeEditAction === 'simplify' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Reduction Ratio:</span>
+                    <input 
+                      type="range" 
+                      min="0.05" 
+                      max="0.95" 
+                      step="0.05" 
+                      value={simplifyRatio} 
+                      onChange={(e) => setSimplifyRatio(parseFloat(e.target.value))}
+                      style={{ width: '120px' }} 
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', width: '35px' }}>{Math.round(simplifyRatio * 100)}%</span>
+                  </div>
+                )}
+
+                {/* 2. Split parameters */}
+                {activeEditAction === 'split' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Split Height:</span>
+                      <input 
+                        type="range" 
+                        min="0.05" 
+                        max="0.95" 
+                        step="0.01" 
+                        value={splitRatio} 
+                        onChange={(e) => setSplitRatio(parseFloat(e.target.value))}
+                        style={{ width: '120px' }} 
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', width: '35px' }}>{Math.round(splitRatio * 100)}%</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Keep:</span>
+                      {(['top', 'bottom', 'both'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          className={`btn-toolbar-toggle ${splitKeepMode === mode ? 'active' : ''}`}
+                          style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                          onClick={() => setSplitKeepMode(mode)}
+                        >
+                          {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Smooth parameters */}
+                {activeEditAction === 'smooth' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Factor:</span>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="0.9" 
+                        step="0.1" 
+                        value={smoothFactor} 
+                        onChange={(e) => setSmoothFactor(parseFloat(e.target.value))}
+                        style={{ width: '80px' }} 
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{smoothFactor.toFixed(1)}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Iterations:</span>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="5" 
+                        step="1" 
+                        value={smoothIterations} 
+                        onChange={(e) => setSmoothIterations(parseInt(e.target.value))}
+                        style={{ width: '80px' }} 
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{smoothIterations}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Emboss parameters */}
+                {activeEditAction === 'emboss' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input 
+                      type="text" 
+                      className="input-field" 
+                      placeholder="Type text..." 
+                      value={embossText} 
+                      onChange={(e) => setEmbossText(e.target.value)} 
+                      style={{ width: '100px', height: '24px', padding: '0 8px', fontSize: '0.75rem' }} 
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Size:</span>
+                      <input 
+                        type="range" 
+                        min="0.2" 
+                        max="3.0" 
+                        step="0.1" 
+                        value={embossSize} 
+                        onChange={(e) => setEmbossSize(parseFloat(e.target.value))}
+                        style={{ width: '70px' }} 
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{embossSize.toFixed(1)}m</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Depth:</span>
+                      <input 
+                        type="range" 
+                        min="-1.5" 
+                        max="1.5" 
+                        step="0.1" 
+                        value={embossDepth} 
+                        onChange={(e) => setEmbossDepth(parseFloat(e.target.value))}
+                        style={{ width: '70px' }} 
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{embossDepth >= 0 ? '+' : ''}{embossDepth.toFixed(1)}m</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Hollow parameters */}
+                {activeEditAction === 'hollow' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Wall Thickness:</span>
+                    <input 
+                      type="range" 
+                      min="0.02" 
+                      max="0.8" 
+                      step="0.02" 
+                      value={hollowThickness} 
+                      onChange={(e) => setHollowThickness(parseFloat(e.target.value))}
+                      style={{ width: '120px' }} 
+                    />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)' }}>{hollowThickness.toFixed(2)}m</span>
+                  </div>
+                )}
+
+                {/* Action Confirmation Buttons */}
+                <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', marginRight: '10px' }}>
+                  <button 
+                    className="btn-toolbar-toggle active" 
+                    onClick={async () => {
+                      if (!engine) return;
+                      if (activeEditAction === 'simplify') {
+                        engine.simplifySelected(simplifyRatio);
+                      } else if (activeEditAction === 'split') {
+                        engine.splitSelected(splitRatio, splitKeepMode);
+                      } else if (activeEditAction === 'smooth') {
+                        engine.smoothSelected(smoothFactor, smoothIterations);
+                      } else if (activeEditAction === 'emboss') {
+                        await engine.embossSelected(embossText, embossSize, embossDepth);
+                      } else if (activeEditAction === 'hollow') {
+                        engine.hollowSelected(hollowThickness);
+                      }
+                      setActiveEditAction(null);
+                    }}
+                    style={{ backgroundColor: 'var(--accent-cyan)', color: '#000', padding: '3px 10px' }}
+                    title="Apply Action"
+                  >
+                    <Check size={14} />
+                    <span style={{ fontWeight: 700 }}>Accept</span>
+                  </button>
+                  
+                  <button 
+                    className="btn-toolbar-toggle" 
+                    onClick={() => setActiveEditAction(null)}
+                    style={{ borderColor: '#ef4444', color: '#ef4444', padding: '3px 10px' }}
+                    title="Cancel Action"
+                  >
+                    <X size={14} />
+                    <span>Cancel</span>
+                  </button>
+                </div>
+
+              </div>
+            )}
 
             <div className="toolbar-divider" />
 

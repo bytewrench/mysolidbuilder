@@ -6,6 +6,12 @@ import { HistoryManager } from './HistoryManager';
 import type { Command } from './HistoryManager';
 import confetti from 'canvas-confetti';
 
+// CSG and Advanced Edit Imports
+import { union, subtract, intersect, fromGeometry, toGeometry, CSGNode } from './CSG';
+import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
+
 // Editor Tools
 export type EditorTool = 'select' | 'translate' | 'rotate' | 'scale' | 'push-pull' | 'shape' | 'erase' | 'paint';
 export type PrimitiveShape = 'box' | 'sphere' | 'cylinder' | 'cone' | 'torus';
@@ -50,6 +56,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
   private selectionBoxHelper: THREE.BoxHelper | null = null;
   private selectionLight: THREE.PointLight | null = null;
   private hoverBoxHelper: THREE.BoxHelper | null = null;
+  private cuttingPlaneHelper: THREE.GridHelper | null = null;
   private previewMesh!: THREE.Mesh;
   
   // Undo/Redo tracking variables
@@ -975,6 +982,867 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     };
 
     this.historyManager.execute(cmd);
+  }
+
+  // Advanced CSG & Mesh Processing Operations (Edit Toolbar)
+
+  private objectToCSG(obj: THREE.Object3D): CSGNode {
+    const csgNodes: CSGNode[] = [];
+    obj.updateMatrixWorld(true);
+    
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const node = fromGeometry(child.geometry, child.matrixWorld);
+        csgNodes.push(node);
+      }
+    });
+
+    if (csgNodes.length === 0) {
+      return new CSGNode([]);
+    }
+
+    let result = csgNodes[0];
+    for (let i = 1; i < csgNodes.length; i++) {
+      result = union(result, csgNodes[i]);
+    }
+    return result;
+  }
+
+  public mergeSelected() {
+    if (this.selectedObjects.length < 2) return;
+    const targets = [...this.selectedObjects];
+
+    const primary = targets[0];
+    const primaryColor = (primary as any).material?.color?.getHexString() ? '#' + (primary as any).material.color.getHexString() : this.activeColor;
+    const primaryStyle = (primary as any).materialStyle || this.activeMaterialStyle;
+
+    const cmd: Command = {
+      name: `Merge Meshes`,
+      execute: () => {
+        let csgResult = this.objectToCSG(targets[0]);
+        for (let i = 1; i < targets.length; i++) {
+          const csgNext = this.objectToCSG(targets[i]);
+          csgResult = union(csgResult, csgNext);
+        }
+
+        const newGeom = toGeometry(csgResult);
+        const newMat = this.createMaterialFromStyle(primaryColor, primaryStyle);
+        const mergedMesh = new THREE.Mesh(newGeom, newMat);
+        mergedMesh.name = `Merged ${this.getNextMeshId('Merged')}`;
+        mergedMesh.castShadow = true;
+        mergedMesh.receiveShadow = true;
+
+        (cmd as any).resultMesh = mergedMesh;
+
+        targets.forEach((obj) => this.scene.remove(obj));
+        this.selectedObjects = [mergedMesh];
+        this.scene.add(mergedMesh);
+
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        const mergedMesh = (cmd as any).resultMesh;
+        if (mergedMesh) {
+          this.scene.remove(mergedMesh);
+        }
+        targets.forEach((obj) => this.scene.add(obj));
+        this.selectedObjects = [...targets];
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public subtractSelected() {
+    if (this.selectedObjects.length < 2) return;
+    const targets = [...this.selectedObjects];
+
+    const primary = targets[0];
+    const primaryColor = (primary as any).material?.color?.getHexString() ? '#' + (primary as any).material.color.getHexString() : this.activeColor;
+    const primaryStyle = (primary as any).materialStyle || this.activeMaterialStyle;
+
+    const cmd: Command = {
+      name: `Subtract Meshes`,
+      execute: () => {
+        let csgResult = this.objectToCSG(targets[0]);
+        for (let i = 1; i < targets.length; i++) {
+          const csgNext = this.objectToCSG(targets[i]);
+          csgResult = subtract(csgResult, csgNext);
+        }
+
+        const newGeom = toGeometry(csgResult);
+        const newMat = this.createMaterialFromStyle(primaryColor, primaryStyle);
+        const resultMesh = new THREE.Mesh(newGeom, newMat);
+        resultMesh.name = `${primary.name} (Subtracted)`;
+        resultMesh.castShadow = true;
+        resultMesh.receiveShadow = true;
+
+        (cmd as any).resultMesh = resultMesh;
+
+        targets.forEach((obj) => this.scene.remove(obj));
+        this.selectedObjects = [resultMesh];
+        this.scene.add(resultMesh);
+
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        const resultMesh = (cmd as any).resultMesh;
+        if (resultMesh) {
+          this.scene.remove(resultMesh);
+        }
+        targets.forEach((obj) => this.scene.add(obj));
+        this.selectedObjects = [...targets];
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public intersectSelected() {
+    if (this.selectedObjects.length < 2) return;
+    const targets = [...this.selectedObjects];
+
+    const primary = targets[0];
+    const primaryColor = (primary as any).material?.color?.getHexString() ? '#' + (primary as any).material.color.getHexString() : this.activeColor;
+    const primaryStyle = (primary as any).materialStyle || this.activeMaterialStyle;
+
+    const cmd: Command = {
+      name: `Intersect Meshes`,
+      execute: () => {
+        let csgResult = this.objectToCSG(targets[0]);
+        for (let i = 1; i < targets.length; i++) {
+          const csgNext = this.objectToCSG(targets[i]);
+          csgResult = intersect(csgResult, csgNext);
+        }
+
+        const newGeom = toGeometry(csgResult);
+        const newMat = this.createMaterialFromStyle(primaryColor, primaryStyle);
+        const resultMesh = new THREE.Mesh(newGeom, newMat);
+        resultMesh.name = `Intersection ${this.getNextMeshId('Intersection')}`;
+        resultMesh.castShadow = true;
+        resultMesh.receiveShadow = true;
+
+        (cmd as any).resultMesh = resultMesh;
+
+        targets.forEach((obj) => this.scene.remove(obj));
+        this.selectedObjects = [resultMesh];
+        this.scene.add(resultMesh);
+
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        const resultMesh = (cmd as any).resultMesh;
+        if (resultMesh) {
+          this.scene.remove(resultMesh);
+        }
+        targets.forEach((obj) => this.scene.add(obj));
+        this.selectedObjects = [...targets];
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public simplifySelected(ratio: number) {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    const originalGeoms = new Map<string, THREE.BufferGeometry>();
+    target.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        originalGeoms.set(child.uuid, child.geometry.clone());
+      }
+    });
+
+    const cmd: Command = {
+      name: `Simplify ${target.name}`,
+      execute: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            try {
+              const modifier = new SimplifyModifier();
+              const originalGeom = originalGeoms.get(child.uuid);
+              if (originalGeom) {
+                const totalVerts = originalGeom.attributes.position.count;
+                const targetCount = Math.max(4, Math.min(totalVerts - 1, Math.floor(totalVerts * ratio)));
+                if (targetCount < totalVerts) {
+                  const simplified = modifier.modify(originalGeom, targetCount);
+                  child.geometry.dispose();
+                  child.geometry = simplified;
+                }
+              }
+            } catch (e) {
+              console.warn("Failed to simplify mesh geometry:", e);
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              child.geometry.dispose();
+              child.geometry = orig.clone();
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  private smoothGeometry(geometry: THREE.BufferGeometry, factor: number, iterations: number): THREE.BufferGeometry {
+    const geom = geometry.clone();
+    const posAttr = geom.getAttribute('position');
+    if (!posAttr) return geom;
+
+    const count = posAttr.count;
+    const vertexKeyMap = new Map<string, number>();
+    const uniquePositions: THREE.Vector3[] = [];
+    const vertexToUnique: number[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const x = parseFloat(posAttr.getX(i).toFixed(5));
+      const y = parseFloat(posAttr.getY(i).toFixed(5));
+      const z = parseFloat(posAttr.getZ(i).toFixed(5));
+      const key = `${x},${y},${z}`;
+
+      let uniqueIdx = vertexKeyMap.get(key);
+      if (uniqueIdx === undefined) {
+        uniqueIdx = uniquePositions.length;
+        vertexKeyMap.set(key, uniqueIdx);
+        uniquePositions.push(new THREE.Vector3(x, y, z));
+      }
+      vertexToUnique.push(uniqueIdx);
+    }
+
+    const numUnique = uniquePositions.length;
+    const adjList: Set<number>[] = Array.from({ length: numUnique }, () => new Set<number>());
+
+    let indices: ArrayLike<number> | null = null;
+    if (geom.index) {
+      indices = geom.index.array;
+    }
+
+    const totalIndices = indices ? indices.length : count;
+    for (let i = 0; i < totalIndices; i += 3) {
+      const idx0 = indices ? indices[i] : i;
+      const idx1 = indices ? indices[i + 1] : i + 1;
+      const idx2 = indices ? indices[i + 2] : i + 2;
+
+      const u0 = vertexToUnique[idx0];
+      const u1 = vertexToUnique[idx1];
+      const u2 = vertexToUnique[idx2];
+
+      if (u0 !== u1) { adjList[u0].add(u1); adjList[u1].add(u0); }
+      if (u1 !== u2) { adjList[u1].add(u2); adjList[u2].add(u1); }
+      if (u2 !== u0) { adjList[u2].add(u0); adjList[u0].add(u2); }
+    }
+
+    let currPos = uniquePositions.map((v) => v.clone());
+    let nextPos = uniquePositions.map((v) => v.clone());
+
+    for (let iter = 0; iter < iterations; iter++) {
+      for (let i = 0; i < numUnique; i++) {
+        const neighbors = adjList[i];
+        if (neighbors.size === 0) continue;
+
+        const avg = new THREE.Vector3();
+        neighbors.forEach((nIdx) => {
+          avg.add(currPos[nIdx]);
+        });
+        avg.divideScalar(neighbors.size);
+        nextPos[i].copy(currPos[i]).lerp(avg, factor);
+      }
+      const temp = currPos;
+      currPos = nextPos;
+      nextPos = temp.map((v) => v.clone());
+    }
+
+    for (let i = 0; i < count; i++) {
+      const uIdx = vertexToUnique[i];
+      const smoothV = currPos[uIdx];
+      posAttr.setXYZ(i, smoothV.x, smoothV.y, smoothV.z);
+    }
+
+    posAttr.needsUpdate = true;
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  public smoothSelected(factor: number, iterations: number) {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    const originalGeoms = new Map<string, THREE.BufferGeometry>();
+    target.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        originalGeoms.set(child.uuid, child.geometry.clone());
+      }
+    });
+
+    const cmd: Command = {
+      name: `Smooth ${target.name}`,
+      execute: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              const smoothed = this.smoothGeometry(orig, factor, iterations);
+              child.geometry.dispose();
+              child.geometry = smoothed;
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              child.geometry.dispose();
+              child.geometry = orig.clone();
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public async embossSelected(text: string, size: number, depth: number) {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    try {
+      const loader = new FontLoader();
+      const fontUrl = 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json';
+      const response = await fetch(fontUrl);
+      const fontJson = await response.json();
+      const font = loader.parse(fontJson);
+
+      const absDepth = Math.abs(depth);
+      const textGeom = new TextGeometry(text, {
+        font: font,
+        size: size,
+        depth: absDepth,
+        curveSegments: 4,
+        bevelEnabled: false
+      });
+      textGeom.center();
+
+      const bbox = new THREE.Box3().setFromObject(target);
+      const targetSize = new THREE.Vector3();
+      bbox.getSize(targetSize);
+      const targetCenter = new THREE.Vector3();
+      bbox.getCenter(targetCenter);
+
+      const primaryColor = (target as any).material?.color?.getHexString() ? '#' + (target as any).material.color.getHexString() : this.activeColor;
+      const primaryStyle = (target as any).materialStyle || this.activeMaterialStyle;
+      const textMat = this.createMaterialFromStyle(primaryColor, primaryStyle);
+      const textMesh = new THREE.Mesh(textGeom, textMat);
+
+      let textZ = targetCenter.z + (targetSize.z / 2);
+      if (depth > 0) {
+        textZ += absDepth / 2 - 0.02;
+      } else {
+        textZ -= absDepth / 2 - 0.02;
+      }
+
+      textMesh.position.set(targetCenter.x, targetCenter.y, textZ);
+      textMesh.updateMatrixWorld(true);
+
+      const targetCSG = this.objectToCSG(target);
+      const textCSG = fromGeometry(textMesh.geometry, textMesh.matrixWorld);
+
+      let resultCSG: CSGNode;
+      if (depth > 0) {
+        resultCSG = union(targetCSG, textCSG);
+      } else {
+        resultCSG = subtract(targetCSG, textCSG);
+      }
+
+      const resultGeom = toGeometry(resultCSG);
+      const resultMesh = new THREE.Mesh(resultGeom, textMat);
+      resultMesh.name = `${target.name} (Embossed)`;
+      resultMesh.castShadow = true;
+      resultMesh.receiveShadow = true;
+
+      const cmd: Command = {
+        name: `Emboss ${target.name}`,
+        execute: () => {
+          (cmd as any).resultMesh = resultMesh;
+          this.scene.remove(target);
+          this.scene.add(resultMesh);
+          this.selectedObjects = [resultMesh];
+          this.onSelectionChanged();
+          this.dispatchEvent({ type: 'scene-changed' });
+        },
+        undo: () => {
+          this.scene.remove(resultMesh);
+          this.scene.add(target);
+          this.selectedObjects = [target];
+          this.onSelectionChanged();
+          this.dispatchEvent({ type: 'scene-changed' });
+        }
+      };
+
+      this.historyManager.execute(cmd);
+      textGeom.dispose();
+
+    } catch (error) {
+      console.error("Emboss failed:", error);
+      alert("Emboss failed to execute. Ensure you are connected to the internet to load the default font typeface.");
+    }
+  }
+
+  private extrudeDownGeometry(mesh: THREE.Mesh, floorY: number = 0): THREE.BufferGeometry {
+    mesh.updateMatrixWorld(true);
+    const matrix = mesh.matrixWorld;
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+
+    const geom = mesh.geometry.clone();
+    const posAttr = geom.getAttribute('position');
+    const normAttr = geom.getAttribute('normal');
+    const uvAttr = geom.getAttribute('uv');
+
+    if (!posAttr) return geom;
+
+    let indices: ArrayLike<number> | null = null;
+    if (geom.index) {
+      indices = geom.index.array;
+    }
+
+    const count = indices ? indices.length : posAttr.count;
+
+    const outPositions: number[] = [];
+    const outNormals: number[] = [];
+    const outUvs: number[] = [];
+
+    for (let i = 0; i < count; i += 3) {
+      const idx0 = indices ? indices[i] : i;
+      const idx1 = indices ? indices[i + 1] : i + 1;
+      const idx2 = indices ? indices[i + 2] : i + 2;
+
+      const A = new THREE.Vector3(posAttr.getX(idx0), posAttr.getY(idx0), posAttr.getZ(idx0)).applyMatrix4(matrix);
+      const B = new THREE.Vector3(posAttr.getX(idx1), posAttr.getY(idx1), posAttr.getZ(idx1)).applyMatrix4(matrix);
+      const C = new THREE.Vector3(posAttr.getX(idx2), posAttr.getY(idx2), posAttr.getZ(idx2)).applyMatrix4(matrix);
+
+      const uvA = new THREE.Vector2(uvAttr ? uvAttr.getX(idx0) : 0, uvAttr ? uvAttr.getY(idx0) : 0);
+      const uvB = new THREE.Vector2(uvAttr ? uvAttr.getX(idx1) : 0, uvAttr ? uvAttr.getY(idx1) : 0);
+      const uvC = new THREE.Vector2(uvAttr ? uvAttr.getX(idx2) : 0, uvAttr ? uvAttr.getY(idx2) : 0);
+
+      const cb = new THREE.Vector3().subVectors(C, B);
+      const ab = new THREE.Vector3().subVectors(A, B);
+      const faceNormal = new THREE.Vector3().crossVectors(cb, ab).normalize();
+
+      outPositions.push(A.x, A.y, A.z, B.x, B.y, B.z, C.x, C.y, C.z);
+      if (normAttr) {
+        const nA = new THREE.Vector3(normAttr.getX(idx0), normAttr.getY(idx0), normAttr.getZ(idx0)).applyMatrix3(normalMatrix).normalize();
+        const nB = new THREE.Vector3(normAttr.getX(idx1), normAttr.getY(idx1), normAttr.getZ(idx1)).applyMatrix3(normalMatrix).normalize();
+        const nC = new THREE.Vector3(normAttr.getX(idx2), normAttr.getY(idx2), normAttr.getZ(idx2)).applyMatrix3(normalMatrix).normalize();
+        outNormals.push(nA.x, nA.y, nA.z, nB.x, nB.y, nB.z, nC.x, nC.y, nC.z);
+      } else {
+        outNormals.push(faceNormal.x, faceNormal.y, faceNormal.z, faceNormal.x, faceNormal.y, faceNormal.z, faceNormal.x, faceNormal.y, faceNormal.z);
+      }
+      outUvs.push(uvA.x, uvA.y, uvB.x, uvB.y, uvC.x, uvC.y);
+
+      if (faceNormal.y < -0.05) {
+        const A_ = new THREE.Vector3(A.x, floorY, A.z);
+        const B_ = new THREE.Vector3(B.x, floorY, B.z);
+        const C_ = new THREE.Vector3(C.x, floorY, C.z);
+
+        outPositions.push(A_.x, A_.y, A_.z, C_.x, C_.y, C_.z, B_.x, B_.y, B_.z);
+        const bottomNormal = new THREE.Vector3(0, -1, 0);
+        outNormals.push(
+          bottomNormal.x, bottomNormal.y, bottomNormal.z,
+          bottomNormal.x, bottomNormal.y, bottomNormal.z,
+          bottomNormal.x, bottomNormal.y, bottomNormal.z
+        );
+        outUvs.push(uvA.x, uvA.y, uvC.x, uvC.y, uvB.x, uvB.y);
+
+        const addWallQuad = (v1: THREE.Vector3, v2: THREE.Vector3, v2_: THREE.Vector3, v1_: THREE.Vector3, uv1: THREE.Vector2, uv2: THREE.Vector2) => {
+          outPositions.push(v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, v2_.x, v2_.y, v2_.z);
+          outPositions.push(v1.x, v1.y, v1.z, v2_.x, v2_.y, v2_.z, v1_.x, v1_.y, v1_.z);
+
+          const edge = new THREE.Vector3().subVectors(v2, v1);
+          const wallNormal = new THREE.Vector3(edge.z, 0, -edge.x).normalize();
+
+          outNormals.push(
+            wallNormal.x, wallNormal.y, wallNormal.z,
+            wallNormal.x, wallNormal.y, wallNormal.z,
+            wallNormal.x, wallNormal.y, wallNormal.z,
+            wallNormal.x, wallNormal.y, wallNormal.z,
+            wallNormal.x, wallNormal.y, wallNormal.z,
+            wallNormal.x, wallNormal.y, wallNormal.z
+          );
+
+          outUvs.push(
+            uv1.x, uv1.y, uv2.x, uv2.y, uv2.x, uv2.y,
+            uv1.x, uv1.y, uv2.x, uv2.y, uv1.x, uv1.y
+          );
+        };
+
+        addWallQuad(A, B, B_, A_, uvA, uvB);
+        addWallQuad(B, C, C_, B_, uvB, uvC);
+        addWallQuad(C, A, A_, C_, uvC, uvA);
+      }
+    }
+
+    const newGeom = new THREE.BufferGeometry();
+    newGeom.setAttribute('position', new THREE.Float32BufferAttribute(outPositions, 3));
+    newGeom.setAttribute('normal', new THREE.Float32BufferAttribute(outNormals, 3));
+    newGeom.setAttribute('uv', new THREE.Float32BufferAttribute(outUvs, 2));
+
+    return newGeom;
+  }
+
+  public extrudeDownSelected() {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    const originalGeoms = new Map<string, { geometry: THREE.BufferGeometry; pos: THREE.Vector3; rot: THREE.Euler; scl: THREE.Vector3 }>();
+    target.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        originalGeoms.set(child.uuid, {
+          geometry: child.geometry.clone(),
+          pos: child.position.clone(),
+          rot: child.rotation.clone(),
+          scl: child.scale.clone()
+        });
+      }
+    });
+
+    const cmd: Command = {
+      name: `Extrude Down ${target.name}`,
+      execute: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const extruded = this.extrudeDownGeometry(child, 0);
+            child.geometry.dispose();
+            child.geometry = extruded;
+            child.position.set(0, 0, 0);
+            child.rotation.set(0, 0, 0);
+            child.scale.set(1, 1, 1);
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              child.geometry.dispose();
+              child.geometry = orig.geometry.clone();
+              child.position.copy(orig.pos);
+              child.rotation.copy(orig.rot);
+              child.scale.copy(orig.scl);
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  private hollowGeometry(geometry: THREE.BufferGeometry, thickness: number): THREE.BufferGeometry {
+    const outer = geometry.clone();
+    const posAttr = outer.getAttribute('position');
+    const normAttr = outer.getAttribute('normal');
+    const uvAttr = outer.getAttribute('uv');
+
+    if (!posAttr || !normAttr) return outer;
+
+    const count = posAttr.count;
+
+    const innerPositions: number[] = [];
+    const innerNormals: number[] = [];
+    const innerUvs: number[] = [];
+
+    for (let i = 0; i < count; i++) {
+      const px = posAttr.getX(i);
+      const py = posAttr.getY(i);
+      const pz = posAttr.getZ(i);
+
+      const nx = normAttr.getX(i);
+      const ny = normAttr.getY(i);
+      const nz = normAttr.getZ(i);
+
+      const ix = px - nx * thickness;
+      const iy = py - ny * thickness;
+      const iz = pz - nz * thickness;
+
+      innerPositions.push(ix, iy, iz);
+      innerNormals.push(-nx, -ny, -nz);
+
+      if (uvAttr) {
+        innerUvs.push(uvAttr.getX(i), uvAttr.getY(i));
+      } else {
+        innerUvs.push(0, 0);
+      }
+    }
+
+    const outerPos: number[] = [];
+    const outerNorm: number[] = [];
+    const outerUv: number[] = [];
+
+    let indices: ArrayLike<number> | null = null;
+    if (geometry.index) {
+      indices = geometry.index.array;
+    }
+
+    const totalIndices = indices ? indices.length : count;
+
+    for (let i = 0; i < totalIndices; i += 3) {
+      const idx0 = indices ? indices[i] : i;
+      const idx1 = indices ? indices[i + 1] : i + 1;
+      const idx2 = indices ? indices[i + 2] : i + 2;
+
+      outerPos.push(posAttr.getX(idx0), posAttr.getY(idx0), posAttr.getZ(idx0));
+      outerPos.push(posAttr.getX(idx1), posAttr.getY(idx1), posAttr.getZ(idx1));
+      outerPos.push(posAttr.getX(idx2), posAttr.getY(idx2), posAttr.getZ(idx2));
+
+      outerNorm.push(normAttr.getX(idx0), normAttr.getY(idx0), normAttr.getZ(idx0));
+      outerNorm.push(normAttr.getX(idx1), normAttr.getY(idx1), normAttr.getZ(idx1));
+      outerNorm.push(normAttr.getX(idx2), normAttr.getY(idx2), normAttr.getZ(idx2));
+
+      outerUv.push(uvAttr ? uvAttr.getX(idx0) : 0, uvAttr ? uvAttr.getY(idx0) : 0);
+      outerUv.push(uvAttr ? uvAttr.getX(idx1) : 0, uvAttr ? uvAttr.getY(idx1) : 0);
+      outerUv.push(uvAttr ? uvAttr.getX(idx2) : 0, uvAttr ? uvAttr.getY(idx2) : 0);
+
+      outerPos.push(innerPositions[idx0 * 3], innerPositions[idx0 * 3 + 1], innerPositions[idx0 * 3 + 2]);
+      outerPos.push(innerPositions[idx2 * 3], innerPositions[idx2 * 3 + 1], innerPositions[idx2 * 3 + 2]);
+      outerPos.push(innerPositions[idx1 * 3], innerPositions[idx1 * 3 + 1], innerPositions[idx1 * 3 + 2]);
+
+      outerNorm.push(innerNormals[idx0 * 3], innerNormals[idx0 * 3 + 1], innerNormals[idx0 * 3 + 2]);
+      outerNorm.push(innerNormals[idx2 * 3], innerNormals[idx2 * 3 + 1], innerNormals[idx2 * 3 + 2]);
+      outerNorm.push(innerNormals[idx1 * 3], innerNormals[idx1 * 3 + 1], innerNormals[idx1 * 3 + 2]);
+
+      outerUv.push(innerUvs[idx0 * 2], innerUvs[idx0 * 2 + 1]);
+      outerUv.push(innerUvs[idx2 * 2], innerUvs[idx2 * 2 + 1]);
+      outerUv.push(innerUvs[idx1 * 2], innerUvs[idx1 * 2 + 1]);
+    }
+
+    const newGeom = new THREE.BufferGeometry();
+    newGeom.setAttribute('position', new THREE.Float32BufferAttribute(outerPos, 3));
+    newGeom.setAttribute('normal', new THREE.Float32BufferAttribute(outerNorm, 3));
+    newGeom.setAttribute('uv', new THREE.Float32BufferAttribute(outerUv, 2));
+
+    return newGeom;
+  }
+
+  public hollowSelected(thickness: number) {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    const originalGeoms = new Map<string, THREE.BufferGeometry>();
+    target.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        originalGeoms.set(child.uuid, child.geometry.clone());
+      }
+    });
+
+    const cmd: Command = {
+      name: `Hollow ${target.name}`,
+      execute: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              const hollowed = this.hollowGeometry(orig, thickness);
+              child.geometry.dispose();
+              child.geometry = hollowed;
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        target.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const orig = originalGeoms.get(child.uuid);
+            if (orig) {
+              child.geometry.dispose();
+              child.geometry = orig.clone();
+            }
+          }
+        });
+        this.updateSelectionHelper();
+        this.dispatchEvent({ type: 'object-modified', object: target });
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public splitSelected(ratio: number, keepMode: 'top' | 'bottom' | 'both') {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+
+    const bbox = new THREE.Box3().setFromObject(target);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
+
+    const cutY = bbox.min.y + size.y * ratio;
+
+    const boxWidth = Math.max(100, size.x * 10);
+    const boxDepth = Math.max(100, size.z * 10);
+    const boxHeight = Math.max(100, size.y * 10);
+
+    const topBoxGeom = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const topBoxMesh = new THREE.Mesh(topBoxGeom);
+    topBoxMesh.position.set(center.x, cutY + boxHeight / 2, center.z);
+    topBoxMesh.updateMatrixWorld(true);
+
+    const bottomBoxGeom = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const bottomBoxMesh = new THREE.Mesh(bottomBoxGeom);
+    bottomBoxMesh.position.set(center.x, cutY - boxHeight / 2, center.z);
+    bottomBoxMesh.updateMatrixWorld(true);
+
+    const targetCSG = this.objectToCSG(target);
+    const topCSG = fromGeometry(topBoxMesh.geometry, topBoxMesh.matrixWorld);
+    const bottomCSG = fromGeometry(bottomBoxMesh.geometry, bottomBoxMesh.matrixWorld);
+
+    const primaryColor = (target as any).material?.color?.getHexString() ? '#' + (target as any).material.color.getHexString() : this.activeColor;
+    const primaryStyle = (target as any).materialStyle || this.activeMaterialStyle;
+    const mat = this.createMaterialFromStyle(primaryColor, primaryStyle);
+
+    let topResultMesh: THREE.Mesh | null = null;
+    let bottomResultMesh: THREE.Mesh | null = null;
+
+    if (keepMode === 'top' || keepMode === 'both') {
+      const topInter = intersect(targetCSG, topCSG);
+      const geom = toGeometry(topInter);
+      if (geom.getAttribute('position') && geom.getAttribute('position').count > 0) {
+        topResultMesh = new THREE.Mesh(geom, mat);
+        topResultMesh.name = `${target.name} (Top)`;
+        topResultMesh.castShadow = true;
+        topResultMesh.receiveShadow = true;
+      }
+    }
+
+    if (keepMode === 'bottom' || keepMode === 'both') {
+      const bottomInter = intersect(targetCSG, bottomCSG);
+      const geom = toGeometry(bottomInter);
+      if (geom.getAttribute('position') && geom.getAttribute('position').count > 0) {
+        bottomResultMesh = new THREE.Mesh(geom, mat);
+        bottomResultMesh.name = `${target.name} (Bottom)`;
+        bottomResultMesh.castShadow = true;
+        bottomResultMesh.receiveShadow = true;
+      }
+    }
+
+    const cmd: Command = {
+      name: `Split ${target.name}`,
+      execute: () => {
+        this.scene.remove(target);
+
+        if (keepMode === 'both') {
+          const newSelection: THREE.Object3D[] = [];
+          if (bottomResultMesh) {
+            this.scene.add(bottomResultMesh);
+            newSelection.push(bottomResultMesh);
+          }
+          if (topResultMesh) {
+            this.scene.add(topResultMesh);
+            topResultMesh.position.y += 0.5;
+            newSelection.push(topResultMesh);
+          }
+          this.selectedObjects = newSelection;
+        } else if (keepMode === 'top' && topResultMesh) {
+          this.scene.add(topResultMesh);
+          this.selectedObjects = [topResultMesh];
+        } else if (keepMode === 'bottom' && bottomResultMesh) {
+          this.scene.add(bottomResultMesh);
+          this.selectedObjects = [bottomResultMesh];
+        } else {
+          this.scene.add(target);
+          this.selectedObjects = [target];
+        }
+
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        if (topResultMesh) this.scene.remove(topResultMesh);
+        if (bottomResultMesh) this.scene.remove(bottomResultMesh);
+        this.scene.add(target);
+        this.selectedObjects = [target];
+        this.onSelectionChanged();
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+    topBoxGeom.dispose();
+    bottomBoxGeom.dispose();
+  }
+
+  public showCuttingPlane(ratio: number) {
+    if (!this.selectedObject) return;
+    const target = this.selectedObject;
+    const bbox = new THREE.Box3().setFromObject(target);
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+    const center = new THREE.Vector3();
+    bbox.getCenter(center);
+
+    const cutY = bbox.min.y + size.y * ratio;
+    const planeSize = Math.max(10, size.x * 2, size.z * 2);
+
+    if (!this.cuttingPlaneHelper) {
+      this.cuttingPlaneHelper = new THREE.GridHelper(planeSize, 20, 0xff00ff, 0xff00ff);
+      const mat = this.cuttingPlaneHelper.material as THREE.LineBasicMaterial;
+      mat.opacity = 0.6;
+      mat.transparent = true;
+      this.scene.add(this.cuttingPlaneHelper);
+    }
+
+    this.cuttingPlaneHelper.position.set(center.x, cutY, center.z);
+    this.cuttingPlaneHelper.visible = true;
+  }
+
+  public hideCuttingPlane() {
+    if (this.cuttingPlaneHelper) {
+      this.scene.remove(this.cuttingPlaneHelper);
+      this.cuttingPlaneHelper = null;
+    }
   }
 
   // 10. Core Control APIs (Used by React)
