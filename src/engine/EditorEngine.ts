@@ -188,7 +188,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
 
     this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
     this.transformControls.size = 0.8;
-    this.scene.add(this.transformControls as any);
+    this.scene.add((this.transformControls as any).getHelper());
 
     // Prevent orbit controls from moving while transform controls are dragged
     this.transformControls.addEventListener('dragging-changed', (event) => {
@@ -243,6 +243,16 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       }
     });
 
+    // Snapping and transform change listener
+    this.transformControls.addEventListener('change', () => {
+      if ((this.transformControls as any).dragging && (this.transformControls as any).mode === 'translate' && this.snapEnabled) {
+        if (this.selectedObject) {
+          this.applyFaceSnapping(this.selectedObject);
+        }
+      }
+      this.updateSelectionHelper();
+    });
+
     // Snap to grid settings
     this.updateSnapping();
   }
@@ -277,7 +287,19 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     if (event.button !== 0) return;
 
     // Check if transform gizmo is hovered/clicked
-    if ((this.transformControls as any).dragging || (this.transformControls as any).pointerIsOver) return;
+    if ((this.transformControls as any).dragging) return;
+    const helper = (this.transformControls as any).getHelper();
+    if (helper && helper.visible) {
+      const rect = this.canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, this.camera);
+      const helperIntersects = raycaster.intersectObjects(helper.children, true);
+      if (helperIntersects.length > 0) return;
+    }
 
     // Get normalized device coordinates
     const rect = this.canvas.getBoundingClientRect();
@@ -472,9 +494,17 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     }
 
     // 3. Handle Hover Outlines
-    if ((this.transformControls as any).dragging || (this.transformControls as any).pointerIsOver) {
+    if ((this.transformControls as any).dragging) {
       this.clearHoverHighlight();
       return;
+    }
+    const helper = (this.transformControls as any).getHelper();
+    if (helper && helper.visible) {
+      const helperIntersects = raycaster.intersectObjects(helper.children, true);
+      if (helperIntersects.length > 0) {
+        this.clearHoverHighlight();
+        return;
+      }
     }
 
     const targets = this.scene.children.filter(child => 
@@ -880,7 +910,17 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
   private onSelectionChanged() {
     const primary = this.selectedObject;
 
+    // Clear old wireframes
+    this.scene.traverse(child => {
+      if (child instanceof THREE.Mesh || child instanceof THREE.Group) {
+        this.removeSelectionWireframes(child);
+      }
+    });
+
     if (primary) {
+      // Add geometry wireframe highlight
+      this.addSelectionWireframes(primary);
+
       // Toggle glow highlight
       primary.traverse(child => {
         if (child instanceof THREE.Mesh && (child.material as any).emissive) {
@@ -891,10 +931,10 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       // Attach TransformControls if active tool is translate/rotate/scale
       if (['translate', 'rotate', 'scale'].includes(this.activeTool)) {
         this.transformControls.attach(primary);
-        (this.transformControls as any).visible = true;
+        (this.transformControls as any).getHelper().visible = true;
       } else {
         this.transformControls.detach();
-        (this.transformControls as any).visible = false;
+        (this.transformControls as any).getHelper().visible = false;
       }
 
       // Show selection box helper
@@ -918,7 +958,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       }
     } else {
       this.transformControls.detach();
-      (this.transformControls as any).visible = false;
+      (this.transformControls as any).getHelper().visible = false;
       if (this.selectionBoxHelper) {
         this.scene.remove(this.selectionBoxHelper);
         this.selectionBoxHelper = null;
@@ -1854,14 +1894,14 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     // Attach / Detach transform controls based on tool mode
     if (this.selectedObject && ['translate', 'rotate', 'scale'].includes(tool)) {
       this.transformControls.attach(this.selectedObject);
-      (this.transformControls as any).visible = true;
+      (this.transformControls as any).getHelper().visible = true;
 
       if (tool === 'translate') this.transformControls.setMode('translate');
       if (tool === 'rotate') this.transformControls.setMode('rotate');
       if (tool === 'scale') this.transformControls.setMode('scale');
     } else {
       this.transformControls.detach();
-      (this.transformControls as any).visible = false;
+      (this.transformControls as any).getHelper().visible = false;
     }
 
     // Hide preview mesh when leaving shape tool
@@ -2014,9 +2054,19 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
         child !== (this.selectionBoxHelper as any) &&
         child !== (this.hoverBoxHelper as any) &&
         child !== this.previewMesh &&
-        child instanceof THREE.Mesh
+        (child instanceof THREE.Mesh || child instanceof THREE.Group)
       ) {
-        exportGroup.add(child.clone());
+        const clone = child.clone();
+        const toRemove: THREE.Object3D[] = [];
+        clone.traverse(c => {
+          if (c.name === 'selection_wireframe') {
+            toRemove.push(c);
+          }
+        });
+        toRemove.forEach(c => {
+          c.parent?.remove(c);
+        });
+        exportGroup.add(clone);
       }
     });
 
@@ -2260,6 +2310,11 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     // Fade out emissive glowing selections / creations over time
     this.scene.traverse((child) => {
       if (child instanceof THREE.Mesh && child.material && (child.material as any).emissive) {
+        if (this.selectedObjects.includes(child) || this.isDescendantOfSelected(child)) {
+          // Keep it glowing cyan
+          (child.material as any).emissive.setHex(0x005566);
+          return;
+        }
         const emissive = (child.material as any).emissive;
         if (emissive.r > 0.01 || emissive.g > 0.01 || emissive.b > 0.01) {
           emissive.lerp(new THREE.Color(0, 0, 0), 0.05); // fade out glow
@@ -2276,5 +2331,136 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       child.name && child.name.toLowerCase().startsWith(shapeName.toLowerCase())
     );
     return matches.length + 1;
+  }
+
+  private isDescendant(parent: THREE.Object3D, child: THREE.Object3D): boolean {
+    let node: THREE.Object3D | null = child.parent;
+    while (node) {
+      if (node === parent) return true;
+      node = node.parent;
+    }
+    return false;
+  }
+
+  private isDescendantOfSelected(child: THREE.Object3D): boolean {
+    return this.selectedObjects.some(selected => this.isDescendant(selected, child));
+  }
+
+  private addSelectionWireframes(obj: THREE.Object3D) {
+    obj.traverse(child => {
+      if (child instanceof THREE.Mesh) {
+        this.removeSelectionWireframes(child);
+
+        const wireframeGeom = new THREE.WireframeGeometry(child.geometry);
+        const lineMat = new THREE.LineBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.6,
+          depthWrite: false,
+          depthTest: true
+        });
+        const wireframeLines = new THREE.LineSegments(wireframeGeom, lineMat);
+        wireframeLines.name = 'selection_wireframe';
+        child.add(wireframeLines);
+      }
+    });
+  }
+
+  private removeSelectionWireframes(obj: THREE.Object3D) {
+    obj.traverse(child => {
+      const toRemove: THREE.Object3D[] = [];
+      child.children.forEach(c => {
+        if (c.name === 'selection_wireframe') {
+          toRemove.push(c);
+        }
+      });
+      toRemove.forEach(c => {
+        child.remove(c);
+        if (c instanceof THREE.LineSegments) {
+          c.geometry.dispose();
+          if (Array.isArray(c.material)) {
+            c.material.forEach(m => m.dispose());
+          } else {
+            c.material.dispose();
+          }
+        }
+      });
+    });
+  }
+
+  private applyFaceSnapping(obj: THREE.Object3D) {
+    const snapThreshold = 0.25; // 25cm snap threshold
+    
+    // 1. Get world bounding box of the moving object
+    const movingBox = new THREE.Box3().setFromObject(obj);
+    const movingMin = movingBox.min;
+    const movingMax = movingBox.max;
+    const movingCenter = movingBox.getCenter(new THREE.Vector3());
+
+    let bestDiffY = Infinity;
+    let bestDiffX = Infinity;
+    let bestDiffZ = Infinity;
+
+    // Get target meshes in scene
+    const targets = this.getMeshes().filter(target => 
+      target !== obj && 
+      !this.isDescendant(obj, target)
+    );
+
+    for (const target of targets) {
+      const targetBox = new THREE.Box3().setFromObject(target);
+      const targetMin = targetBox.min;
+      const targetMax = targetBox.max;
+      const targetCenter = targetBox.getCenter(new THREE.Vector3());
+
+      // --- Y Axis Snapping (Stacking / Bottom-to-Top) ---
+      const diffBottomToTop = Math.abs(movingMin.y - targetMax.y);
+      if (diffBottomToTop < snapThreshold && diffBottomToTop < Math.abs(bestDiffY)) {
+        bestDiffY = targetMax.y - movingMin.y;
+      }
+      const diffTopToBottom = Math.abs(movingMax.y - targetMin.y);
+      if (diffTopToBottom < snapThreshold && diffTopToBottom < Math.abs(bestDiffY)) {
+        bestDiffY = targetMin.y - movingMax.y;
+      }
+
+      // --- X Axis Snapping (Center and Edge alignments) ---
+      const diffCenterX = Math.abs(movingCenter.x - targetCenter.x);
+      if (diffCenterX < snapThreshold && diffCenterX < Math.abs(bestDiffX)) {
+        bestDiffX = targetCenter.x - movingCenter.x;
+      }
+      const diffMinX = Math.abs(movingMin.x - targetMin.x);
+      if (diffMinX < snapThreshold && diffMinX < Math.abs(bestDiffX)) {
+        bestDiffX = targetMin.x - movingMin.x;
+      }
+      const diffMaxX = Math.abs(movingMax.x - targetMax.x);
+      if (diffMaxX < snapThreshold && diffMaxX < Math.abs(bestDiffX)) {
+        bestDiffX = targetMax.x - movingMax.x;
+      }
+
+      // --- Z Axis Snapping (Center and Edge alignments) ---
+      const diffCenterZ = Math.abs(movingCenter.z - targetCenter.z);
+      if (diffCenterZ < snapThreshold && diffCenterZ < Math.abs(bestDiffZ)) {
+        bestDiffZ = targetCenter.z - movingCenter.z;
+      }
+      const diffMinZ = Math.abs(movingMin.z - targetMin.z);
+      if (diffMinZ < snapThreshold && diffMinZ < Math.abs(bestDiffZ)) {
+        bestDiffZ = targetMin.z - movingMin.z;
+      }
+      const diffMaxZ = Math.abs(movingMax.z - targetMax.z);
+      if (diffMaxZ < snapThreshold && diffMaxZ < Math.abs(bestDiffZ)) {
+        bestDiffZ = targetMax.z - movingMax.z;
+      }
+    }
+
+    // Apply Snapping
+    if (Math.abs(bestDiffY) < snapThreshold) {
+      obj.position.y += bestDiffY;
+    }
+    if (Math.abs(bestDiffX) < snapThreshold) {
+      obj.position.x += bestDiffX;
+    }
+    if (Math.abs(bestDiffZ) < snapThreshold) {
+      obj.position.z += bestDiffZ;
+    }
   }
 }
