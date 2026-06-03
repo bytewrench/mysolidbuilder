@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { EditorEngine } from '../engine/EditorEngine';
-import type { MaterialStyle } from '../engine/EditorEngine';
 import * as THREE from 'three';
 import { 
   Eye, 
@@ -8,30 +7,26 @@ import {
   Trash2, 
   Layers, 
   Settings, 
-  Paintbrush, 
-  Copy
+  Copy,
+  FolderTree,
+  CheckSquare,
+  Square,
+  RefreshCw,
+  FolderClosed,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 interface SidebarProps {
   engine: EditorEngine | null;
 }
 
-const PRESET_COLORS = [
-  '#3b82f6', // Indigo Blue
-  '#10b981', // Emerald Green
-  '#f59e0b', // Amber Orange
-  '#ef4444', // Coral Red
-  '#ec4899', // Pink
-  '#8b5cf6', // Violet Purple
-  '#00f0ff', // Cyber Cyan
-  '#e2e8f0', // Off White
-  '#475569', // Steel Slate
-  '#1e293b'  // Midnight Navy
-];
-
 export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
-  const [meshes, setMeshes] = useState<THREE.Mesh[]>([]);
-  const [selectedMesh, setSelectedMesh] = useState<THREE.Mesh | null>(null);
+  const [meshes, setMeshes] = useState<THREE.Object3D[]>([]);
+  const [selectedMesh, setSelectedMesh] = useState<THREE.Object3D | null>(null);
+  const [selectedCount, setSelectedCount] = useState(0);
+  const [stickySelection, setStickySelection] = useState(false);
+  const [isHierarchyOpen, setIsHierarchyOpen] = useState(true);
 
   // Inspector Form State
   const [meshName, setMeshName] = useState('');
@@ -45,22 +40,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
   const [sclY, setSclY] = useState(1);
   const [sclZ, setSclZ] = useState(1);
 
-  // Material & Color State
-  const [color, setColor] = useState('#3b82f6');
-  const [materialStyle, setMaterialStyle] = useState<MaterialStyle>('standard');
-
   useEffect(() => {
     if (!engine) return;
 
     const handleSceneChange = () => {
       setMeshes(engine.getMeshes());
+      setSelectedCount(engine.selectedObjects.length);
     };
 
     const handleSelectionChange = (e: any) => {
-      const mesh = e.object as THREE.Mesh | null;
-      setSelectedMesh(mesh);
-      if (mesh) {
-        syncInspector(mesh);
+      const obj = e.object as THREE.Object3D | null;
+      setSelectedMesh(obj);
+      setSelectedCount(engine.selectedObjects.length);
+      setStickySelection(engine.stickySelection);
+      if (obj) {
+        syncInspector(obj);
       }
     };
 
@@ -77,6 +71,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
     // Initial Sync
     setMeshes(engine.getMeshes());
     setSelectedMesh(engine.selectedObject);
+    setSelectedCount(engine.selectedObjects.length);
+    setStickySelection(engine.stickySelection);
     if (engine.selectedObject) {
       syncInspector(engine.selectedObject);
     }
@@ -88,13 +84,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
     };
   }, [engine, selectedMesh]);
 
-  const syncInspector = (mesh: THREE.Mesh) => {
+  const syncInspector = (mesh: THREE.Object3D) => {
     setMeshName(mesh.name);
     setPosX(parseFloat(mesh.position.x.toFixed(2)));
     setPosY(parseFloat(mesh.position.y.toFixed(2)));
     setPosZ(parseFloat(mesh.position.z.toFixed(2)));
 
-    // Rotations in degrees
     setRotX(parseFloat((THREE.MathUtils.radToDeg(mesh.rotation.x) % 360).toFixed(1)));
     setRotY(parseFloat((THREE.MathUtils.radToDeg(mesh.rotation.y) % 360).toFixed(1)));
     setRotZ(parseFloat((THREE.MathUtils.radToDeg(mesh.rotation.z) % 360).toFixed(1)));
@@ -102,23 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
     setSclX(parseFloat(mesh.scale.x.toFixed(2)));
     setSclY(parseFloat(mesh.scale.y.toFixed(2)));
     setSclZ(parseFloat(mesh.scale.z.toFixed(2)));
-
-    // Get color & style
-    const mat = mesh.material as THREE.Material;
-    if (mat) {
-      if ((mat as any).color) {
-        setColor('#' + (mat as any).color.getHexString());
-      }
-      const isGlass = (mat as any).transmission > 0.5;
-      const isMetal = (mat as any).metalness > 0.8;
-      const isMatte = (mat as any).roughness > 0.8;
-      
-      setMaterialStyle(
-        isGlass ? 'glass' :
-        isMetal ? 'metal' :
-        isMatte ? 'matte' : 'standard'
-      );
-    }
   };
 
   const handlePropertyChange = (field: string, val: any) => {
@@ -142,40 +120,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
     engine.updateSelectedObjectProperties(props);
   };
 
-  const handleColorChange = (hex: string) => {
-    setColor(hex);
-    if (engine) {
-      engine.activeColor = hex;
-      if (selectedMesh) {
-        engine.updateSelectedObjectProperties({ color: hex });
-      }
-    }
-  };
-
-  const handleMaterialStyleChange = (style: MaterialStyle) => {
-    setMaterialStyle(style);
-    if (engine) {
-      engine.activeMaterialStyle = style;
-      if (selectedMesh) {
-        engine.updateSelectedObjectProperties({ style });
-      }
-    }
-  };
-
-  const toggleVisibility = (mesh: THREE.Mesh, e: React.MouseEvent) => {
+  const toggleVisibility = (mesh: THREE.Object3D, e: React.MouseEvent) => {
     e.stopPropagation();
     mesh.visible = !mesh.visible;
-    // Force rerender hierarchy
     setMeshes([...meshes]);
   };
 
-  const deleteMesh = (mesh: THREE.Mesh, e: React.MouseEvent) => {
+  const deleteMesh = (mesh: THREE.Object3D, e: React.MouseEvent) => {
     e.stopPropagation();
     if (engine) {
       engine.selectMesh(null);
       engine.scene.remove(mesh);
       (engine as any).dispatchEvent({ type: 'scene-changed' });
     }
+  };
+
+  const handleToggleSticky = () => {
+    if (!engine) return;
+    const newVal = !stickySelection;
+    engine.stickySelection = newVal;
+    setStickySelection(newVal);
   };
 
   return (
@@ -190,71 +154,107 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
       padding: '20px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '20px',
+      gap: '16px',
       overflowY: 'auto',
       boxSizing: 'border-box',
       zIndex: 40
     }}>
       
-      {/* 1. SCENE HIERARCHY */}
+      {/* 1. SELECTION & GROUPING UTILITIES (Matches Microsoft 3D Builder Sidebar) */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <Layers size={16} color="var(--accent-cyan)" />
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Scene Hierarchy
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <FolderClosed size={16} color="var(--accent-cyan)" />
+          <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Selection Tools
           </h3>
         </div>
-        
-        {meshes.length === 0 ? (
-          <div style={{ 
-            fontSize: '0.75rem', 
-            color: 'var(--text-muted)', 
-            padding: '16px', 
-            textAlign: 'center', 
-            background: 'rgba(0,0,0,0.1)', 
-            borderRadius: '6px',
-            border: '1px dashed var(--border-light)'
-          }}>
-            No models in sandbox. Add one below!
-          </div>
-        ) : (
-          <div className="hierarchy-list">
-            {meshes.map((mesh) => (
-              <div 
-                key={mesh.uuid}
-                className={`hierarchy-item ${selectedMesh === mesh ? 'active' : ''}`}
-                onClick={() => engine?.selectMesh(mesh)}
-              >
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '160px' }}>
-                  {mesh.name}
-                </span>
-                <div className="hierarchy-item-actions">
-                  <button className="hierarchy-item-btn" onClick={(e) => toggleVisibility(mesh, e)}>
-                    {mesh.visible ? <Eye size={12} /> : <EyeOff size={12} color="#ef4444" />}
-                  </button>
-                  <button className="hierarchy-item-btn delete" onClick={(e) => deleteMesh(mesh, e)}>
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+          
+          <button 
+            className="btn-action tooltip"
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
+            onClick={() => engine?.groupSelected()}
+            disabled={selectedCount < 2}
+            data-tooltip="Group Selected Objects"
+          >
+            <Layers size={14} />
+            <span>Group</span>
+          </button>
+
+          <button 
+            className="btn-action tooltip"
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
+            onClick={() => engine?.ungroupSelected()}
+            disabled={!selectedMesh || !(selectedMesh instanceof THREE.Group)}
+            data-tooltip="Ungroup Group Container"
+          >
+            <FolderClosed size={14} />
+            <span>Ungroup</span>
+          </button>
+
+          <button 
+            className="btn-action"
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
+            onClick={() => engine?.selectAll()}
+          >
+            <CheckSquare size={14} />
+            <span>Select All</span>
+          </button>
+
+          <button 
+            className="btn-action"
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center' }}
+            onClick={() => engine?.deselectAll()}
+          >
+            <Square size={14} />
+            <span>Deselect All</span>
+          </button>
+
+          <button 
+            className="btn-action"
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center', gridColumn: 'span 2' }}
+            onClick={() => engine?.invertSelection()}
+          >
+            <RefreshCw size={14} />
+            <span>Invert Selection</span>
+          </button>
+
+          <button 
+            className={`btn-action ${stickySelection ? 'primary' : ''}`}
+            style={{ padding: '6px', fontSize: '0.75rem', justifyContent: 'center', gridColumn: 'span 2' }}
+            onClick={handleToggleSticky}
+          >
+            <Layers size={14} />
+            <span>{stickySelection ? 'Sticky Selection: ON' : 'Sticky Selection: OFF'}</span>
+          </button>
+
+        </div>
       </div>
 
       <div style={{ height: '1px', background: 'var(--border-light)' }} />
 
       {/* 2. OBJECT PROPERTIES INSPECTOR */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
           <Settings size={16} color="var(--accent-cyan)" />
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Transform Inspector
           </h3>
+          {selectedCount > 1 && (
+            <span style={{
+              fontSize: '0.625rem',
+              background: 'rgba(0, 240, 255, 0.1)',
+              color: 'var(--accent-cyan)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              marginLeft: 'auto'
+            }}>{selectedCount} Selected</span>
+          )}
         </div>
 
         {selectedMesh ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             
             {/* Object Name */}
             <div>
@@ -324,22 +324,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
               <button 
                 className="btn-action" 
-                style={{ flex: 1, fontSize: '0.75rem', padding: '6px' }}
+                style={{ flex: 1, fontSize: '0.75rem', padding: '6px', justifyContent: 'center' }}
                 onClick={() => engine?.duplicateSelected()}
               >
                 <Copy size={12} />
-                Duplicate
+                <span>Duplicate</span>
               </button>
               <button 
                 className="btn-action" 
-                style={{ flex: 1, fontSize: '0.75rem', padding: '6px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)' }}
+                style={{ flex: 1, fontSize: '0.75rem', padding: '6px', color: '#ef4444', borderColor: 'rgba(239,68,68,0.2)', justifyContent: 'center' }}
                 onClick={() => engine?.deleteSelected()}
               >
                 <Trash2 size={12} />
-                Delete
+                <span>Delete</span>
               </button>
             </div>
 
@@ -348,7 +348,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
           <div style={{ 
             fontSize: '0.75rem', 
             color: 'var(--text-muted)', 
-            padding: '24px 16px', 
+            padding: '16px', 
             textAlign: 'center', 
             background: 'rgba(0,0,0,0.1)', 
             borderRadius: '6px',
@@ -361,64 +361,72 @@ export const Sidebar: React.FC<SidebarProps> = ({ engine }) => {
 
       <div style={{ height: '1px', background: 'var(--border-light)' }} />
 
-      {/* 3. MATERIAL & COLORS PALETTE */}
+      {/* 3. SCENE HIERARCHY / ITEMS LIST (Retractable container like MS 3D Builder) */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-          <Paintbrush size={16} color="var(--accent-cyan)" />
-          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Material & Color
-          </h3>
-        </div>
-
-        {/* Color Palette */}
-        <label className="input-label" style={{ marginBottom: '8px' }}>Color Swatch</label>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-          {PRESET_COLORS.map((hex) => (
-            <div 
-              key={hex}
-              className={`color-swatch ${color.toLowerCase() === hex.toLowerCase() ? 'active' : ''}`}
-              style={{ backgroundColor: hex }}
-              onClick={() => handleColorChange(hex)}
-            />
-          ))}
-          <input 
-            type="color" 
-            value={color}
-            onChange={(e) => handleColorChange(e.target.value)}
-            style={{
-              width: '24px',
-              height: '24px',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              background: 'transparent',
-              padding: 0
-            }} 
-            className="tooltip"
-            data-tooltip="Custom Color Picker"
-          />
-        </div>
-
-        {/* Material Styles */}
-        <label className="input-label" style={{ marginBottom: '8px' }}>Material Finish</label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-          {(['standard', 'matte', 'metal', 'glass'] as MaterialStyle[]).map((style) => (
-            <button
-              key={style}
-              className={`btn-action ${materialStyle === style ? 'primary' : ''}`}
-              style={{ 
-                padding: '6px 10px', 
+        <button 
+          onClick={() => setIsHierarchyOpen(!isHierarchyOpen)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'space-between', 
+            width: '100%', 
+            background: 'transparent', 
+            border: 'none', 
+            padding: 0,
+            cursor: 'pointer',
+            color: 'var(--text-primary)',
+            outline: 'none',
+            marginBottom: '8px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <FolderTree size={16} color="var(--accent-cyan)" />
+            <h3 style={{ fontSize: '0.8125rem', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Items
+            </h3>
+          </div>
+          {isHierarchyOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        </button>
+        
+        {isHierarchyOpen && (
+          <>
+            {meshes.length === 0 ? (
+              <div style={{ 
                 fontSize: '0.75rem', 
-                textTransform: 'capitalize', 
-                justifyContent: 'center',
-                boxShadow: 'none'
-              }}
-              onClick={() => handleMaterialStyleChange(style)}
-            >
-              {style === 'standard' ? 'Default' : style}
-            </button>
-          ))}
-        </div>
+                color: 'var(--text-muted)', 
+                padding: '16px', 
+                textAlign: 'center', 
+                background: 'rgba(0,0,0,0.1)', 
+                borderRadius: '6px',
+                border: '1px dashed var(--border-light)'
+              }}>
+                No items in scene.
+              </div>
+            ) : (
+              <div className="hierarchy-list">
+                {meshes.map((mesh) => (
+                  <div 
+                    key={mesh.uuid}
+                    className={`hierarchy-item ${selectedMesh === mesh || (engine?.selectedObjects.includes(mesh)) ? 'active' : ''}`}
+                    onClick={() => engine?.selectMesh(mesh)}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px', fontWeight: (mesh instanceof THREE.Group) ? 700 : 400 }}>
+                      {(mesh instanceof THREE.Group) ? `📁 ${mesh.name}` : `📦 ${mesh.name}`}
+                    </span>
+                    <div className="hierarchy-item-actions">
+                      <button className="hierarchy-item-btn" onClick={(e) => toggleVisibility(mesh, e)}>
+                        {mesh.visible ? <Eye size={12} /> : <EyeOff size={12} color="#ef4444" />}
+                      </button>
+                      <button className="hierarchy-item-btn delete" onClick={(e) => deleteMesh(mesh, e)}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
     </aside>

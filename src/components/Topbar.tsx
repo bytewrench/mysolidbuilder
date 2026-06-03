@@ -1,29 +1,58 @@
 import React, { useState, useEffect } from 'react';
 import * as THREE from 'three';
 import { EditorEngine } from '../engine/EditorEngine';
+import type { MaterialStyle } from '../engine/EditorEngine';
 import { 
   Undo2, 
   Redo2, 
-  Save, 
-  Download, 
-  FolderOpen, 
   Grid, 
   Sparkles, 
   Trash2, 
-  HelpCircle 
+  HelpCircle, 
+  Download, 
+  Menu,
+  Sun,
+  Palette,
+  Eye,
+  Activity,
+  Box,
+  Ungroup,
+  Layers,
+  Copy
 } from 'lucide-react';
 
 interface TopbarProps {
   engine: EditorEngine | null;
   onOpenHelp: () => void;
   onExit: () => void;
+  onToggleLeftMenu: () => void;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit }) => {
+export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit, onToggleLeftMenu }) => {
+  const [activeTab, setActiveTab] = useState<'edit' | 'paint' | 'view' | 'help'>('view');
+  
+  // History state
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+
+  // Snapping state
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [snapSize, setSnapSize] = useState(0.5);
+
+  // View Filter states
+  const [shadingEnabled, setShadingEnabled] = useState(true);
+  const [shadowsEnabled, setShadowsEnabled] = useState(true);
+  const [colorsEnabled, setColorsEnabled] = useState(true);
+  const [reflectionsEnabled, setReflectionsEnabled] = useState(true);
+  const [smoothingEnabled, setSmoothingEnabled] = useState(true);
+  const [wireframeEnabled, setWireframeEnabled] = useState(false);
+  const [gridEnabled, setGridEnabled] = useState(true);
+  const [xrayEnabled, setXrayEnabled] = useState(false);
+
+  // Paint active state
+  const [color, setColor] = useState('#3b82f6');
+  const [materialStyle, setMaterialStyle] = useState<MaterialStyle>('standard');
+  const [selectedMesh, setSelectedMesh] = useState<THREE.Object3D | null>(null);
 
   useEffect(() => {
     if (!engine) return;
@@ -33,14 +62,46 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit }) =>
       setCanRedo(engine.historyManager.canRedo());
     };
 
+    const handleSelectionChange = (e: any) => {
+      setSelectedMesh(e.object);
+      if (e.object) {
+        // Sync color / material
+        const mat = e.object.material as any;
+        if (mat) {
+          if (mat.color) {
+            setColor('#' + mat.color.getHexString());
+          }
+          const isGlass = mat.transmission > 0.5;
+          const isMetal = mat.metalness > 0.8;
+          const isMatte = mat.roughness > 0.8;
+          setMaterialStyle(
+            isGlass ? 'glass' :
+            isMetal ? 'metal' :
+            isMatte ? 'matte' : 'standard'
+          );
+        }
+      }
+    };
+
     (engine as any).addEventListener('history-changed', handleHistoryChange);
-    // Initial State
+    (engine as any).addEventListener('selection-changed', handleSelectionChange);
+    
+    // Init state
     setSnapEnabled(engine.snapEnabled);
     setSnapSize(engine.gridSnapSize);
+    setShadingEnabled(engine.shadingEnabled);
+    setShadowsEnabled(engine.shadowsEnabled);
+    setColorsEnabled(engine.colorsEnabled);
+    setReflectionsEnabled(engine.reflectionsEnabled);
+    setSmoothingEnabled(engine.smoothingEnabled);
+    setWireframeEnabled(engine.wireframeEnabled);
+    setGridEnabled(engine.gridEnabled);
+    setXrayEnabled(engine.xrayEnabled);
     handleHistoryChange();
 
     return () => {
       (engine as any).removeEventListener('history-changed', handleHistoryChange);
+      (engine as any).removeEventListener('selection-changed', handleSelectionChange);
     };
   }, [engine]);
 
@@ -63,118 +124,78 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit }) =>
     setSnapSize(val);
   };
 
-  const handleSave = () => {
+  const handleToggleFilter = (filter: string) => {
     if (!engine) return;
-    const meshes = engine.getMeshes();
-    const sceneData = meshes.map(mesh => ({
-      name: mesh.name,
-      geometryType: mesh.geometry.type,
-      parameters: (mesh.geometry as any).parameters,
-      position: [mesh.position.x, mesh.position.y, mesh.position.z],
-      rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
-      scale: [mesh.scale.x, mesh.scale.y, mesh.scale.z],
-      color: '#' + (mesh.material as any).color.getHexString(),
-      style: (mesh.material as any).transmission > 0.5 ? 'glass' :
-             (mesh.material as any).metalness > 0.8 ? 'metal' :
-             (mesh.material as any).roughness > 0.8 ? 'matte' : 'standard'
-    }));
-
-    localStorage.setItem('ms_build_3d_project', JSON.stringify(sceneData));
-    alert('Project saved successfully to browser storage!');
+    switch (filter) {
+      case 'shading':
+        engine.shadingEnabled = !shadingEnabled;
+        setShadingEnabled(engine.shadingEnabled);
+        break;
+      case 'shadows':
+        engine.shadowsEnabled = !shadowsEnabled;
+        setShadowsEnabled(engine.shadowsEnabled);
+        break;
+      case 'colors':
+        engine.colorsEnabled = !colorsEnabled;
+        setColorsEnabled(engine.colorsEnabled);
+        break;
+      case 'reflections':
+        engine.reflectionsEnabled = !reflectionsEnabled;
+        setReflectionsEnabled(engine.reflectionsEnabled);
+        break;
+      case 'smoothing':
+        engine.smoothingEnabled = !smoothingEnabled;
+        setSmoothingEnabled(engine.smoothingEnabled);
+        break;
+      case 'wireframe':
+        engine.wireframeEnabled = !wireframeEnabled;
+        setWireframeEnabled(engine.wireframeEnabled);
+        break;
+      case 'grid':
+        engine.gridEnabled = !gridEnabled;
+        setGridEnabled(engine.gridEnabled);
+        break;
+      case 'xray':
+        engine.xrayEnabled = !xrayEnabled;
+        setXrayEnabled(engine.xrayEnabled);
+        break;
+    }
+    engine.updateViewFilters();
   };
 
-  const handleLoad = () => {
-    if (!engine) return;
-    const dataStr = localStorage.getItem('ms_build_3d_project');
-    if (!dataStr) {
-      alert('No saved project found. Draw something first!');
-      return;
-    }
+  const PRESET_COLORS = [
+    '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#00f0ff', '#ffffff', '#475569', '#1e293b'
+  ];
 
-    try {
-      const sceneData = JSON.parse(dataStr);
-      engine.selectMesh(null);
-      engine.historyManager.clear();
-
-      // Remove existing user models
-      const userMeshes = engine.getMeshes();
-      userMeshes.forEach(mesh => engine.scene.remove(mesh));
-
-      // Recreate meshes
-      sceneData.forEach((item: any) => {
-        let geom: THREE.BufferGeometry;
-        const p = item.parameters || {};
-
-        // Rebuild geometries based on type
-        if (item.geometryType === 'SphereGeometry') {
-          geom = new THREE.SphereGeometry(p.radius || 1, p.widthSegments || 32, p.heightSegments || 16);
-        } else if (item.geometryType === 'CylinderGeometry') {
-          geom = new THREE.CylinderGeometry(p.radiusTop || 1, p.radiusBottom || 1, p.height || 2, p.radialSegments || 16);
-        } else if (item.geometryType === 'ConeGeometry') {
-          geom = new THREE.ConeGeometry(p.radius || 1, p.height || 2, p.radialSegments || 16);
-        } else if (item.geometryType === 'TorusGeometry') {
-          geom = new THREE.TorusGeometry(p.radius || 1, p.tube || 0.3, p.radialSegments || 16, p.tubularSegments || 64);
-        } else {
-          geom = new THREE.BoxGeometry(p.width || 2, p.height || 2, p.depth || 2);
-        }
-
-        // Build material
-        const color = new THREE.Color(item.color);
-        let material: THREE.Material;
-        
-        if (item.style === 'matte') {
-          material = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.05 });
-        } else if (item.style === 'metal') {
-          material = new THREE.MeshStandardMaterial({ color, roughness: 0.15, metalness: 0.95 });
-        } else if (item.style === 'glass') {
-          material = new THREE.MeshPhysicalMaterial({
-            color,
-            roughness: 0.1,
-            transmission: 0.9,
-            thickness: 1.0,
-            transparent: true,
-            opacity: 1
-          });
-        } else {
-          material = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2 });
-        }
-
-        const mesh = new THREE.Mesh(geom, material);
-        mesh.name = item.name;
-        mesh.position.set(item.position[0], item.position[1], item.position[2]);
-        mesh.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2]);
-        mesh.scale.set(item.scale[0], item.scale[1], item.scale[2]);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-
-        engine.scene.add(mesh);
-      });
-
-      (engine as any).dispatchEvent({ type: 'scene-changed' });
-      alert('Project loaded successfully!');
-    } catch (err) {
-      console.error(err);
-      alert('Error parsing saved project.');
+  const handleColorChange = (hex: string) => {
+    setColor(hex);
+    if (engine) {
+      engine.activeColor = hex;
+      if (selectedMesh) {
+        engine.updateSelectedObjectProperties({ color: hex });
+      }
     }
   };
 
-  const handleExport = () => {
-    engine?.exportGLTF();
-  };
-
-  const handleClear = () => {
-    if (confirm('Are you sure you want to clear the canvas?')) {
-      engine?.loadTemplate('empty');
+  const handleMaterialStyleChange = (style: MaterialStyle) => {
+    setMaterialStyle(style);
+    if (engine) {
+      engine.activeMaterialStyle = style;
+      if (selectedMesh) {
+        engine.updateSelectedObjectProperties({ style });
+      }
     }
   };
+
+  const handleGroup = () => engine?.groupSelected();
+  const handleUngroup = () => engine?.ungroupSelected();
 
   return (
     <header className="glass-panel" style={{ 
       gridRow: 1, 
       display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      padding: '0 20px',
+      flexDirection: 'column',
+      padding: 0,
       height: 'var(--topbar-height)',
       borderRadius: 0,
       borderBottom: '1px solid var(--border-light)',
@@ -184,154 +205,332 @@ export const Topbar: React.FC<TopbarProps> = ({ engine, onOpenHelp, onExit }) =>
       zIndex: 100
     }}>
       
-      {/* Brand Logo */}
-      <div 
-        style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-        onClick={onExit}
-        title="Exit to Landing Page"
-      >
-        <div style={{
-          background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))',
-          width: '32px',
-          height: '32px',
-          borderRadius: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 0 15px rgba(0, 240, 255, 0.4)'
-        }}>
-          <Sparkles size={18} color="#07080a" />
-        </div>
-        <div>
-          <h1 style={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '0.5px', margin: 0, display: 'inline-block' }}>
-            MYSOLID<span style={{ color: 'var(--accent-cyan)' }}>BUILDER</span>
-          </h1>
-          <span style={{ 
-            fontSize: '0.625rem', 
-            background: 'rgba(0, 240, 255, 0.1)', 
-            color: 'var(--accent-cyan)', 
-            border: '1px solid var(--border-cyan)', 
-            padding: '2px 6px', 
-            borderRadius: '4px',
-            marginLeft: '8px',
-            verticalAlign: 'middle',
-            fontWeight: 600
-          }}>3D EDITOR</span>
-        </div>
-      </div>
-
-      {/* Editor History and Save Actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* ROW 1: HEADER & TABS */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: '56px',
+        padding: '0 20px',
+        width: '100%',
+        boxSizing: 'border-box'
+      }}>
         
-        {/* Undo / Redo */}
-        <button 
-          className="btn-icon tooltip" 
-          onClick={handleUndo} 
-          disabled={!canUndo}
-          data-tooltip="Undo (Ctrl+Z)"
-        >
-          <Undo2 size={18} />
-        </button>
-        <button 
-          className="btn-icon tooltip" 
-          onClick={handleRedo} 
-          disabled={!canRedo}
-          data-tooltip="Redo (Ctrl+Y)"
-        >
-          <Redo2 size={18} />
-        </button>
-
-        <div style={{ width: '1px', height: '24px', background: 'var(--border-light)', margin: '0 4px' }} />
-
-        {/* LocalStorage Actions */}
-        <button className="btn-action tooltip" onClick={handleSave} data-tooltip="Save to Local Storage">
-          <Save size={16} />
-          <span>Save</span>
-        </button>
-        <button className="btn-action tooltip" onClick={handleLoad} data-tooltip="Load Last Saved Model">
-          <FolderOpen size={16} />
-          <span>Load</span>
-        </button>
-
-        {/* Clear Scene */}
-        <button className="btn-action tooltip" style={{ color: '#ef4444' }} onClick={handleClear} data-tooltip="Clear Sandbox">
-          <Trash2 size={16} />
-          <span>Clear</span>
-        </button>
-      </div>
-
-      {/* Right Side Settings and Export */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        
-        {/* Snapping */}
-        <div className="glass-card" style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          padding: '4px 8px', 
-          gap: '8px', 
-          height: '32px',
-          borderRadius: '6px'
-        }}>
+        {/* Left Side: Hamburger & Brand & Tab Selection */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          
+          {/* Hamburger Menu Toggle Button */}
           <button 
-            onClick={handleToggleSnap}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: snapEnabled ? 'var(--accent-cyan)' : 'var(--text-muted)',
+            className="btn-icon tooltip" 
+            onClick={onToggleLeftMenu}
+            style={{ marginRight: '16px', width: '36px', height: '36px' }}
+            data-tooltip="Open File Menu"
+          >
+            <Menu size={18} />
+          </button>
+
+          {/* Logo */}
+          <div 
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+            onClick={onExit}
+            title="Exit to Landing Page"
+          >
+            <div style={{
+              background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-blue))',
+              width: '28px',
+              height: '28px',
+              borderRadius: '6px',
               display: 'flex',
               alignItems: 'center',
-              padding: 0
-            }}
-            className="tooltip"
-            data-tooltip="Toggle Grid Snapping"
-          >
-            <Grid size={16} />
-          </button>
-          
-          <select 
-            className="input-field" 
-            style={{ 
-              height: '24px', 
-              padding: '0 4px', 
-              width: '70px',
-              background: 'transparent',
-              border: 'none',
-              fontSize: '0.75rem',
-              color: snapEnabled ? 'var(--text-primary)' : 'var(--text-muted)'
-            }}
-            value={snapSize}
-            onChange={handleChangeSnapSize}
-            disabled={!snapEnabled}
-          >
-            <option value="0.1">0.1m</option>
-            <option value="0.25">0.25m</option>
-            <option value="0.5">0.5m</option>
-            <option value="1.0">1.0m</option>
-            <option value="2.0">2.0m</option>
-          </select>
+              justifyContent: 'center'
+            }}>
+              <Sparkles size={14} color="#07080a" />
+            </div>
+            <h1 style={{ fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px', margin: 0 }}>
+              MYSOLID<span style={{ color: 'var(--accent-cyan)' }}>BUILDER</span>
+            </h1>
+          </div>
+
+          {/* Tabs Switcher matching MS 3D Builder */}
+          <div className="topbar-tabs-container">
+            {(['edit', 'paint', 'view', 'help'] as const).map((tab) => (
+              <button
+                key={tab}
+                className={`topbar-tab ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
         </div>
 
-        <div style={{ width: '1px', height: '24px', background: 'var(--border-light)' }} />
+        {/* Right Side: Quick Action Bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          
+          {/* Undo / Redo */}
+          <button 
+            className="btn-icon tooltip" 
+            onClick={handleUndo} 
+            disabled={!canUndo}
+            style={{ width: '34px', height: '34px' }}
+            data-tooltip="Undo (Ctrl+Z)"
+          >
+            <Undo2 size={16} />
+          </button>
+          
+          <button 
+            className="btn-icon tooltip" 
+            onClick={handleRedo} 
+            disabled={!canRedo}
+            style={{ width: '34px', height: '34px' }}
+            data-tooltip="Redo (Ctrl+Y)"
+          >
+            <Redo2 size={16} />
+          </button>
 
-        {/* Help button */}
-        <button 
-          className="btn-icon tooltip" 
-          onClick={onOpenHelp}
-          data-tooltip="View Shortcuts & Info"
-        >
-          <HelpCircle size={18} />
-        </button>
+          <div style={{ width: '1px', height: '18px', background: 'var(--border-light)', margin: '0 4px' }} />
 
-        {/* GLTF Export */}
-        <button 
-          className="btn-action primary tooltip" 
-          onClick={handleExport}
-          data-tooltip="Export as GLTF file"
-        >
-          <Download size={16} />
-          <span>Export 3D</span>
-        </button>
+          {/* Export button */}
+          <button 
+            className="btn-action primary tooltip" 
+            onClick={() => engine?.exportGLTF()}
+            style={{ height: '34px', padding: '0 12px', fontSize: '0.8rem' }}
+            data-tooltip="Export as GLTF file"
+          >
+            <Download size={14} />
+            <span>Export 3D</span>
+          </button>
+
+        </div>
+
+      </div>
+
+      {/* ROW 2: ACTIVE TAB TOOLBAR */}
+      <div className="topbar-row-secondary">
+        
+        {/* VIEW TAB TOOLBAR */}
+        {activeTab === 'view' && (
+          <>
+            <button 
+              className={`btn-toolbar-toggle ${shadingEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('shading')}
+            >
+              <Box size={14} />
+              <span>Shading</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${shadowsEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('shadows')}
+            >
+              <Sun size={14} />
+              <span>Shadows</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${colorsEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('colors')}
+            >
+              <Palette size={14} />
+              <span>Colors</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${reflectionsEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('reflections')}
+            >
+              <Activity size={14} />
+              <span>Reflections</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${smoothingEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('smoothing')}
+            >
+              <Sparkles size={14} />
+              <span>Smoothing</span>
+            </button>
+
+            <div className="toolbar-divider" />
+
+            <button 
+              className={`btn-toolbar-toggle ${wireframeEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('wireframe')}
+            >
+              <Grid size={14} />
+              <span>Wireframe</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${gridEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('grid')}
+            >
+              <Layers size={14} />
+              <span>Grid</span>
+            </button>
+
+            <button 
+              className={`btn-toolbar-toggle ${xrayEnabled ? 'active' : ''}`}
+              onClick={() => handleToggleFilter('xray')}
+            >
+              <Eye size={14} />
+              <span>X-ray</span>
+            </button>
+          </>
+        )}
+
+        {/* EDIT TAB TOOLBAR */}
+        {activeTab === 'edit' && (
+          <>
+            <button 
+              className="btn-toolbar-toggle"
+              onClick={handleGroup}
+              disabled={!engine || engine.selectedObjects.length < 2}
+            >
+              <Box size={14} />
+              <span>Group Selection</span>
+            </button>
+
+            <button 
+              className="btn-toolbar-toggle"
+              onClick={handleUngroup}
+              disabled={!selectedMesh || !(selectedMesh instanceof THREE.Group)}
+            >
+              <Ungroup size={14} />
+              <span>Ungroup Selection</span>
+            </button>
+
+            <button 
+              className="btn-toolbar-toggle"
+              onClick={() => engine?.duplicateSelected()}
+              disabled={!selectedMesh}
+            >
+              <Copy size={14} />
+              <span>Duplicate</span>
+            </button>
+
+            <button 
+              className="btn-toolbar-toggle"
+              onClick={() => engine?.deleteSelected()}
+              disabled={!selectedMesh}
+              style={{ color: '#ef4444' }}
+            >
+              <Trash2 size={14} />
+              <span>Delete</span>
+            </button>
+
+            <div className="toolbar-divider" />
+
+            {/* Grid Snapping */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+              <button 
+                onClick={handleToggleSnap}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: snapEnabled ? 'var(--accent-cyan)' : 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: 0
+                }}
+                className="tooltip"
+                data-tooltip="Toggle Grid Snapping"
+              >
+                <Grid size={14} />
+              </button>
+              
+              <select 
+                className="input-field" 
+                style={{ 
+                  height: '24px', 
+                  padding: '0 4px', 
+                  width: '75px',
+                  background: 'rgba(0,0,0,0.2)',
+                  border: '1px solid var(--border-light)',
+                  fontSize: '0.7rem',
+                  color: snapEnabled ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+                value={snapSize}
+                onChange={handleChangeSnapSize}
+                disabled={!snapEnabled}
+              >
+                <option value="0.1">0.1m</option>
+                <option value="0.25">0.25m</option>
+                <option value="0.5">0.5m</option>
+                <option value="1.0">1.0m</option>
+                <option value="2.0">2.0m</option>
+              </select>
+            </div>
+          </>
+        )}
+
+        {/* PAINT TAB TOOLBAR */}
+        {activeTab === 'paint' && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Swatches:</span>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {PRESET_COLORS.map(hex => (
+                  <div 
+                    key={hex}
+                    className={`color-swatch ${color.toLowerCase() === hex.toLowerCase() ? 'active' : ''}`}
+                    style={{ backgroundColor: hex, width: '18px', height: '18px', borderRadius: '4px' }}
+                    onClick={() => handleColorChange(hex)}
+                  />
+                ))}
+                <input 
+                  type="color" 
+                  value={color}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    padding: 0
+                  }} 
+                />
+              </div>
+            </div>
+
+            <div className="toolbar-divider" />
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Finish:</span>
+              {(['standard', 'matte', 'metal', 'glass'] as MaterialStyle[]).map((style) => (
+                <button
+                  key={style}
+                  className={`btn-toolbar-toggle ${materialStyle === style ? 'active' : ''}`}
+                  style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                  onClick={() => handleMaterialStyleChange(style)}
+                >
+                  {style === 'standard' ? 'Default' : style}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* HELP TAB TOOLBAR */}
+        {activeTab === 'help' && (
+          <>
+            <button 
+              className="btn-toolbar-toggle"
+              onClick={onOpenHelp}
+            >
+              <HelpCircle size={14} />
+              <span>Launch Quick Start Guide</span>
+            </button>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              Hotkeys: [Q] Select | [W] Move | [E] Rotate | [R] Scale | [T] Extrude | [Del] Delete
+            </span>
+          </>
+        )}
 
       </div>
 

@@ -35,7 +35,7 @@
 
   --sidebar-width: 320px;
   --toolbar-height: 64px;
-  --topbar-height: 56px;
+  --topbar-height: 96px;
   --border-radius: 12px;
 }
 
@@ -1039,3 +1039,185 @@ body {
   margin: 0;
 }
 
+
+/* ==========================================================================
+   TABS, SECONDARY TOOLBAR, AND LEFT DRAWER STYLES
+   ========================================================================== */
+
+/* Topbar Tab Switcher */
+.topbar-tabs-container {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  margin-left: 24px;
+  gap: 4px;
+}
+
+.topbar-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 8px 16px 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.topbar-tab:hover {
+  color: var(--text-primary);
+  border-bottom-color: rgba(255, 255, 255, 0.2);
+}
+
+.topbar-tab.active {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+/* Secondary Toolbar Row */
+.topbar-row-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  width: 100%;
+  padding: 0 20px;
+  border-top: 1px solid var(--border-light);
+  background: rgba(14, 17, 23, 0.4);
+  box-sizing: border-box;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-light);
+  margin: 0 8px;
+}
+
+.btn-toolbar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-toolbar-toggle:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.btn-toolbar-toggle.active {
+  background: rgba(0, 240, 255, 0.08);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1);
+}
+
+/* Left Drawer Styles */
+.left-drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 500;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.left-drawer-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 280px;
+  height: 100%;
+  background: var(--bg-dark);
+  border-right: 1px solid var(--border-light);
+  box-shadow: 5px 0 25px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0;
+  box-sizing: border-box;
+  animation: slideInLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.left-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px 16px 24px;
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: 16px;
+}
+
+.left-drawer-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.left-drawer-menu {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.left-drawer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+}
+
+.left-drawer-menu-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  padding-left: 28px;
+}
+
+.left-drawer-menu-item.danger:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.left-drawer-footer {
+  padding: 16px 24px 0 24px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* File Picker Input */
+.hidden-file-input {
+  display: none !important;
+}

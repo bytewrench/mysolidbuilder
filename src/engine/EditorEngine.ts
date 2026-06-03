@@ -25,7 +25,24 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
   public activeShape: PrimitiveShape = 'box';
   public activeColor: string = '#3b82f6'; // Indigo default
   public activeMaterialStyle: MaterialStyle = 'standard';
-  public selectedObject: THREE.Mesh | null = null;
+  
+  // Selection State
+  public selectedObjects: THREE.Object3D[] = [];
+  public stickySelection: boolean = false;
+  get selectedObject(): THREE.Object3D | null {
+    return this.selectedObjects.length > 0 ? this.selectedObjects[0] : null;
+  }
+
+  // View Settings State
+  public shadingEnabled: boolean = true;
+  public shadowsEnabled: boolean = true;
+  public colorsEnabled: boolean = true;
+  public reflectionsEnabled: boolean = true;
+  public smoothingEnabled: boolean = true;
+  public wireframeEnabled: boolean = false;
+  public gridEnabled: boolean = true;
+  public xrayEnabled: boolean = false;
+
   public snapEnabled: boolean = true;
   public gridSnapSize: number = 0.5;
 
@@ -265,16 +282,16 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, this.camera);
 
-    // List of models in scene that can be clicked
+    // List of models in scene that can be clicked (recursively checks groups as well)
     const targets = this.scene.children.filter(child => 
       child !== (this.gridHelper as any) && 
       child !== (this.selectionBoxHelper as any) &&
       child !== (this.hoverBoxHelper as any) &&
       child !== this.previewMesh &&
-      child instanceof THREE.Mesh
-    ) as THREE.Mesh[];
+      (child instanceof THREE.Mesh || child instanceof THREE.Group)
+    );
 
-    const intersects = raycaster.intersectObjects(targets);
+    const intersects = raycaster.intersectObjects(targets, true);
 
     if (this.activeTool === 'shape') {
       // Add shape mode: find ground/grid intersection
@@ -332,15 +349,25 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     }
 
     if (intersects.length > 0) {
-      const clickedMesh = intersects[0].object as THREE.Mesh;
+      const clickedObj = this.getSelectionTarget(intersects[0].object);
 
       if (this.activeTool === 'erase') {
-        this.deleteMesh(clickedMesh);
+        this.deleteMesh(clickedObj);
       } else if (this.activeTool === 'paint') {
-        this.paintMesh(clickedMesh);
+        if (clickedObj instanceof THREE.Group) {
+          clickedObj.traverse(child => {
+            if (child instanceof THREE.Mesh) this.paintMesh(child);
+          });
+        } else if (clickedObj instanceof THREE.Mesh) {
+          this.paintMesh(clickedObj);
+        }
       } else {
         // Select, Translate, Rotate, Scale
-        this.selectMesh(clickedMesh);
+        if (this.stickySelection) {
+          this.toggleSelectMesh(clickedObj);
+        } else {
+          this.selectMesh(clickedObj);
+        }
       }
     } else {
       // Clicked on empty space: deselect if we are in Selection modes
@@ -448,24 +475,24 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       child !== (this.selectionBoxHelper as any) &&
       child !== (this.hoverBoxHelper as any) &&
       child !== this.previewMesh &&
-      child instanceof THREE.Mesh
-    ) as THREE.Mesh[];
+      (child instanceof THREE.Mesh || child instanceof THREE.Group)
+    );
 
-    const intersects = raycaster.intersectObjects(targets);
+    const intersects = raycaster.intersectObjects(targets, true);
 
     if (intersects.length > 0) {
-      const hoveredMesh = intersects[0].object as THREE.Mesh;
+      const hoveredObj = this.getSelectionTarget(intersects[0].object);
       
-      if (hoveredMesh === this.selectedObject) {
+      if (hoveredObj === this.selectedObject) {
         this.clearHoverHighlight();
         return;
       }
 
       if (this.hoverBoxHelper) {
-        if ((this.hoverBoxHelper as any).object !== hoveredMesh) {
+        if ((this.hoverBoxHelper as any).object !== hoveredObj) {
           this.scene.remove(this.hoverBoxHelper);
-          this.hoverBoxHelper = new THREE.BoxHelper(hoveredMesh, 0xffd700); // Yellow outline
-          (this.hoverBoxHelper as any).object = hoveredMesh;
+          this.hoverBoxHelper = new THREE.BoxHelper(hoveredObj, 0xffd700); // Yellow outline
+          (this.hoverBoxHelper as any).object = hoveredObj;
           (this.hoverBoxHelper.material as any).depthTest = false;
           (this.hoverBoxHelper.material as any).transparent = true;
           (this.hoverBoxHelper.material as any).opacity = 0.5;
@@ -474,8 +501,8 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
           this.hoverBoxHelper.update();
         }
       } else {
-        this.hoverBoxHelper = new THREE.BoxHelper(hoveredMesh, 0xffd700);
-        (this.hoverBoxHelper as any).object = hoveredMesh;
+        this.hoverBoxHelper = new THREE.BoxHelper(hoveredObj, 0xffd700);
+        (this.hoverBoxHelper as any).object = hoveredObj;
         (this.hoverBoxHelper.material as any).depthTest = false;
         (this.hoverBoxHelper.material as any).transparent = true;
         (this.hoverBoxHelper.material as any).opacity = 0.5;
@@ -619,6 +646,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     this.historyManager.execute(cmd);
     
     // Flash tool back to 'translate' or 'select' for quick editing
+    this.updateViewFilters();
     this.setTool('translate');
     this.previewMesh.visible = false;
     this.dispatchEvent({ type: 'cursor-moved', point: null });
@@ -672,20 +700,26 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     this.historyManager.execute(cmd);
   }
 
-  // Delete Mesh
-  private deleteMesh(mesh: THREE.Mesh) {
-    const isSelected = this.selectedObject === mesh;
+  // Delete Mesh / Object
+  private deleteMesh(obj: THREE.Object3D) {
+    const isSelected = this.selectedObjects.includes(obj);
 
     const cmd: Command = {
-      name: `Delete ${mesh.name}`,
+      name: `Delete ${obj.name}`,
       execute: () => {
-        if (isSelected) this.selectMesh(null);
-        this.scene.remove(mesh);
+        if (isSelected) {
+          this.selectedObjects = this.selectedObjects.filter(item => item !== obj);
+          this.onSelectionChanged();
+        }
+        this.scene.remove(obj);
         this.dispatchEvent({ type: 'scene-changed' });
       },
       undo: () => {
-        this.scene.add(mesh);
-        if (isSelected) this.selectMesh(mesh);
+        this.scene.add(obj);
+        if (isSelected) {
+          this.selectedObjects.push(obj);
+          this.onSelectionChanged();
+        }
         this.dispatchEvent({ type: 'scene-changed' });
       }
     };
@@ -693,21 +727,163 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     this.historyManager.execute(cmd);
   }
 
-  // Select Mesh
-  public selectMesh(mesh: THREE.Mesh | null) {
-    if (this.selectedObject === mesh) return;
-
-    this.selectedObject = mesh;
-
-    if (mesh) {
-      // Glow mesh cyan on selection
-      if ((mesh.material as any).emissive) {
-        (mesh.material as any).emissive.setHex(0x00f0ff);
+  // Selection target resolver (group support)
+  private getSelectionTarget(obj: THREE.Object3D): THREE.Object3D {
+    let current = obj;
+    while (current.parent && current.parent !== this.scene) {
+      if (current.parent instanceof THREE.Group) {
+        current = current.parent;
+      } else {
+        break;
       }
+    }
+    return current;
+  }
+
+  // Select Object
+  public selectMesh(obj: THREE.Object3D | null) {
+    if (obj) {
+      this.selectedObjects = [obj];
+    } else {
+      this.selectedObjects = [];
+    }
+    this.onSelectionChanged();
+  }
+
+  public toggleSelectMesh(obj: THREE.Object3D) {
+    const idx = this.selectedObjects.indexOf(obj);
+    if (idx > -1) {
+      this.selectedObjects.splice(idx, 1);
+    } else {
+      this.selectedObjects.push(obj);
+    }
+    this.onSelectionChanged();
+  }
+
+  public selectAll() {
+    const meshes = this.getMeshes();
+    this.selectedObjects = [...meshes];
+    this.onSelectionChanged();
+  }
+
+  public deselectAll() {
+    this.selectedObjects = [];
+    this.onSelectionChanged();
+  }
+
+  public invertSelection() {
+    const all = this.getMeshes();
+    this.selectedObjects = all.filter(obj => !this.selectedObjects.includes(obj));
+    this.onSelectionChanged();
+  }
+
+  public groupSelected() {
+    if (this.selectedObjects.length < 2) return;
+
+    const group = new THREE.Group();
+    group.name = `Group ${this.getNextMeshId('Group')}`;
+
+    // Calculate selection center
+    const center = new THREE.Vector3();
+    this.selectedObjects.forEach(obj => center.add(obj.position));
+    center.divideScalar(this.selectedObjects.length);
+    group.position.copy(center);
+
+    const oldParents: { object: THREE.Object3D; parent: THREE.Object3D; position: THREE.Vector3; rotation: THREE.Euler; scale: THREE.Vector3 }[] = [];
+    const objectsToGroup = [...this.selectedObjects];
+
+    const cmd: Command = {
+      name: `Group into ${group.name}`,
+      execute: () => {
+        this.scene.add(group);
+        objectsToGroup.forEach(obj => {
+          oldParents.push({
+            object: obj,
+            parent: obj.parent || this.scene,
+            position: obj.position.clone(),
+            rotation: obj.rotation.clone(),
+            scale: obj.scale.clone()
+          });
+
+          // Attach to group (handles world to local conversion)
+          group.attach(obj);
+        });
+
+        this.selectMesh(group);
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        this.selectMesh(null);
+        oldParents.forEach(entry => {
+          entry.parent.attach(entry.object);
+          entry.object.position.copy(entry.position);
+          entry.object.rotation.copy(entry.rotation);
+          entry.object.scale.copy(entry.scale);
+        });
+        this.scene.remove(group);
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  public ungroupSelected() {
+    if (!this.selectedObject || !(this.selectedObject instanceof THREE.Group)) return;
+
+    const group = this.selectedObject as THREE.Group;
+    const children = [...group.children];
+    const oldTransforms: { object: THREE.Object3D; parent: THREE.Object3D; position: THREE.Vector3; rotation: THREE.Euler; scale: THREE.Vector3 }[] = [];
+
+    const cmd: Command = {
+      name: `Ungroup ${group.name}`,
+      execute: () => {
+        this.selectMesh(null);
+        children.forEach(obj => {
+          oldTransforms.push({
+            object: obj,
+            parent: group,
+            position: obj.position.clone(),
+            rotation: obj.rotation.clone(),
+            scale: obj.scale.clone()
+          });
+
+          // Attach back to the scene root
+          this.scene.attach(obj);
+        });
+        this.scene.remove(group);
+        this.dispatchEvent({ type: 'scene-changed' });
+      },
+      undo: () => {
+        this.scene.add(group);
+        oldTransforms.forEach(entry => {
+          group.attach(entry.object);
+          entry.object.position.copy(entry.position);
+          entry.object.rotation.copy(entry.rotation);
+          entry.object.scale.copy(entry.scale);
+        });
+        this.selectMesh(group);
+        this.dispatchEvent({ type: 'scene-changed' });
+      }
+    };
+
+    this.historyManager.execute(cmd);
+  }
+
+  private onSelectionChanged() {
+    const primary = this.selectedObject;
+
+    if (primary) {
+      // Toggle glow highlight
+      primary.traverse(child => {
+        if (child instanceof THREE.Mesh && (child.material as any).emissive) {
+          (child.material as any).emissive.setHex(0x00f0ff);
+        }
+      });
 
       // Attach TransformControls if active tool is translate/rotate/scale
       if (['translate', 'rotate', 'scale'].includes(this.activeTool)) {
-        this.transformControls.attach(mesh);
+        this.transformControls.attach(primary);
         (this.transformControls as any).visible = true;
       } else {
         this.transformControls.detach();
@@ -716,7 +892,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
 
       // Show selection box helper
       if (this.selectionBoxHelper) this.scene.remove(this.selectionBoxHelper);
-      this.selectionBoxHelper = new THREE.BoxHelper(mesh, 0x00f0ff);
+      this.selectionBoxHelper = new THREE.BoxHelper(primary, 0x00f0ff);
       (this.selectionBoxHelper.material as any).depthTest = false;
       (this.selectionBoxHelper.material as any).transparent = true;
       (this.selectionBoxHelper.material as any).opacity = 0.8;
@@ -724,17 +900,16 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
 
       // Light up object slightly
       if (this.selectionLight) {
-        this.selectionLight.position.copy(mesh.position);
+        this.selectionLight.position.copy(primary.position);
         this.selectionLight.position.y += 1.5;
         this.selectionLight.visible = true;
       }
 
       // Clear hover helper if hovering selected mesh
-      if (this.hoverBoxHelper && (this.hoverBoxHelper as any).object === mesh) {
+      if (this.hoverBoxHelper && (this.hoverBoxHelper as any).object === primary) {
         this.clearHoverHighlight();
       }
     } else {
-      // Clear selection helpers
       this.transformControls.detach();
       (this.transformControls as any).visible = false;
       if (this.selectionBoxHelper) {
@@ -746,7 +921,7 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
       }
     }
 
-    this.dispatchEvent({ type: 'selection-changed', object: mesh });
+    this.dispatchEvent({ type: 'selection-changed', object: primary });
   }
 
   // Update position of selection box highlight
@@ -770,21 +945,23 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
   // Duplicate current selected object
   public duplicateSelected() {
     if (!this.selectedObject) return;
-    const mesh = this.selectedObject;
-    const clone = mesh.clone();
-    clone.name = `${mesh.name} (Copy)`;
+    const obj = this.selectedObject;
+    const clone = obj.clone();
+    clone.name = `${obj.name} (Copy)`;
     clone.position.x += 2; // offset it slightly
     clone.position.z += 2;
     clone.castShadow = true;
     clone.receiveShadow = true;
 
     // Glow clone cyan
-    if ((clone.material as any).emissive) {
-      (clone.material as any).emissive.setHex(0x00f0ff);
-    }
+    clone.traverse(child => {
+      if (child instanceof THREE.Mesh && (child.material as any).emissive) {
+        (child.material as any).emissive.setHex(0x00f0ff);
+      }
+    });
 
     const cmd: Command = {
-      name: `Duplicate ${mesh.name}`,
+      name: `Duplicate ${obj.name}`,
       execute: () => {
         this.scene.add(clone);
         this.selectMesh(clone);
@@ -849,7 +1026,13 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     const oldPos = mesh.position.clone();
     const oldRot = mesh.rotation.clone();
     const oldScl = mesh.scale.clone();
-    const oldMaterial = mesh.material as THREE.Material;
+    
+    const oldMaterials = new Map<string, THREE.Material | THREE.Material[]>();
+    mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        oldMaterials.set(child.uuid, child.material);
+      }
+    });
 
     const newMaterial = props.color || props.style 
       ? this.createMaterialFromStyle(props.color || this.activeColor, props.style || this.activeMaterialStyle)
@@ -868,7 +1051,13 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
         if (props.sclX !== undefined) mesh.scale.x = props.sclX;
         if (props.sclY !== undefined) mesh.scale.y = props.sclY;
         if (props.sclZ !== undefined) mesh.scale.z = props.sclZ;
-        if (newMaterial) mesh.material = newMaterial;
+        if (newMaterial) {
+          mesh.traverse((child) => {
+            if (child instanceof THREE.Mesh) {
+              child.material = newMaterial;
+            }
+          });
+        }
         
         this.updateSelectionHelper();
         this.dispatchEvent({ type: 'object-modified', object: mesh });
@@ -879,7 +1068,12 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
         mesh.position.copy(oldPos);
         mesh.rotation.copy(oldRot);
         mesh.scale.copy(oldScl);
-        mesh.material = oldMaterial;
+        mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const mat = oldMaterials.get(child.uuid);
+            if (mat) child.material = mat;
+          }
+        });
 
         this.updateSelectionHelper();
         this.dispatchEvent({ type: 'object-modified', object: mesh });
@@ -988,15 +1182,110 @@ export class EditorEngine extends THREE.EventDispatcher<any> {
     URL.revokeObjectURL(a.href);
   }
 
-  // Get active meshes inside the scene
-  public getMeshes(): THREE.Mesh[] {
+  // Apply view filter settings to the scene
+  public updateViewFilters() {
+    // 1. Grid Helper
+    if (this.gridHelper) {
+      this.gridHelper.visible = this.gridEnabled;
+    }
+
+    // 2. Shadows (toggle light shadow casting)
+    this.renderer.shadowMap.enabled = this.shadowsEnabled;
+    this.scene.traverse((child) => {
+      if (child instanceof THREE.DirectionalLight) {
+        child.castShadow = this.shadowsEnabled;
+      }
+    });
+
+    // 3. Traverse all meshes in the scene and apply filter overrides
+    const meshes = this.getMeshes();
+    meshes.forEach((obj) => {
+      obj.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const mat = child.material as any;
+        if (!mat) return;
+
+        // Backup original material settings
+        if (!child.userData.originalMaterialSettings) {
+          child.userData.originalMaterialSettings = {
+            colorHex: '#' + mat.color.getHexString(),
+            roughness: mat.roughness,
+            metalness: mat.metalness,
+            transmission: mat.transmission,
+            opacity: mat.opacity,
+            transparent: mat.transparent,
+            side: mat.side,
+            flatShading: mat.flatShading,
+            wireframe: mat.wireframe,
+          };
+        }
+
+        const orig = child.userData.originalMaterialSettings;
+
+        // Apply Shading
+        if (!this.shadingEnabled) {
+          if (!(child.material instanceof THREE.MeshBasicMaterial)) {
+            child.material = new THREE.MeshBasicMaterial({
+              color: this.colorsEnabled ? new THREE.Color(orig.colorHex) : new THREE.Color('#ffffff'),
+              wireframe: this.wireframeEnabled,
+            });
+          }
+        } else {
+          // Restore standard / physical
+          let targetMat = child.material;
+          if (child.material instanceof THREE.MeshBasicMaterial) {
+            targetMat = this.createMaterialFromStyle(orig.colorHex, this.activeMaterialStyle);
+            child.material = targetMat;
+          }
+
+          const standardMat = targetMat as any;
+          if (standardMat.color) {
+            standardMat.color.copy(this.colorsEnabled ? new THREE.Color(orig.colorHex) : new THREE.Color('#ffffff'));
+          }
+
+          // Apply Smoothing
+          standardMat.flatShading = !this.smoothingEnabled;
+
+          // Apply Reflections
+          if (!this.reflectionsEnabled) {
+            standardMat.metalness = 0;
+            standardMat.roughness = 1;
+          } else {
+            standardMat.metalness = orig.metalness;
+            standardMat.roughness = orig.roughness;
+          }
+
+          // Apply Wireframe
+          standardMat.wireframe = this.wireframeEnabled;
+
+          // Apply X-ray
+          if (this.xrayEnabled) {
+            standardMat.transparent = true;
+            standardMat.opacity = 0.3;
+            standardMat.side = THREE.DoubleSide;
+            standardMat.depthWrite = false;
+          } else {
+            standardMat.transparent = orig.transparent;
+            standardMat.opacity = orig.opacity;
+            standardMat.side = orig.side;
+            standardMat.depthWrite = true;
+          }
+
+          standardMat.needsUpdate = true;
+        }
+      });
+    });
+  }
+
+  // Get active meshes/groups inside the scene
+  public getMeshes(): THREE.Object3D[] {
     return this.scene.children.filter(child => 
       child !== (this.gridHelper as any) && 
       child !== (this.selectionBoxHelper as any) &&
       child !== (this.hoverBoxHelper as any) &&
       child !== this.previewMesh &&
-      child instanceof THREE.Mesh
-    ) as THREE.Mesh[];
+      (child instanceof THREE.Mesh || child instanceof THREE.Group)
+    );
   }
 
   // 11. Resize and Render loop

@@ -9,7 +9,7 @@ interface MeasurementsHUDProps {
 export const MeasurementsHUD: React.FC<MeasurementsHUDProps> = ({ engine }) => {
   const [cursorPoint, setCursorPoint] = useState<THREE.Vector3 | null>(null);
   const [pushPullOffset, setPushPullOffset] = useState<number | null>(null);
-  const [selectedMesh, setSelectedMesh] = useState<THREE.Mesh | null>(null);
+  const [selectedMesh, setSelectedMesh] = useState<THREE.Object3D | null>(null);
   const [volume, setVolume] = useState<number | null>(null);
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export const MeasurementsHUD: React.FC<MeasurementsHUDProps> = ({ engine }) => {
     };
 
     const handleSelectionChange = (e: any) => {
-      const mesh = e.object as THREE.Mesh | null;
+      const mesh = e.object as THREE.Object3D | null;
       setSelectedMesh(mesh);
       if (mesh) {
         calculateVolume(mesh);
@@ -68,34 +68,41 @@ export const MeasurementsHUD: React.FC<MeasurementsHUDProps> = ({ engine }) => {
     };
   }, [engine, selectedMesh]);
 
-  const calculateVolume = (mesh: THREE.Mesh) => {
-    const scale = mesh.scale;
-    const type = mesh.geometry.type;
-    let vol = 0;
+  const calculateVolume = (obj: THREE.Object3D) => {
+    let totalVol = 0;
 
-    // Standard volumes based on base geometries:
-    // Box (width=2, height=2, depth=2)
-    if (type === 'BoxGeometry') {
-      vol = (2 * scale.x) * (2 * scale.y) * (2 * scale.z);
-    }
-    // Sphere (radius=1)
-    else if (type === 'SphereGeometry') {
-      vol = (4 / 3) * Math.PI * Math.pow(scale.x, 3);
-    }
-    // Cylinder (radius=1, height=2)
-    else if (type === 'CylinderGeometry') {
-      vol = Math.PI * Math.pow(scale.x, 2) * (2 * scale.y);
-    }
-    // Cone (radius=1, height=2)
-    else if (type === 'ConeGeometry') {
-      vol = (1 / 3) * Math.PI * Math.pow(scale.x, 2) * (2 * scale.y);
-    }
-    // Torus (radius=1, tube=0.3)
-    else if (type === 'TorusGeometry') {
-      vol = 2 * Math.pow(Math.PI, 2) * Math.pow(0.3 * scale.y, 2) * (1 * scale.x);
-    }
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const scale = child.scale;
+        const type = child.geometry.type;
+        let vol = 0;
 
-    setVolume(vol > 0 ? parseFloat(vol.toFixed(3)) : null);
+        // Standard volumes based on base geometries:
+        // Box (width=2, height=2, depth=2)
+        if (type === 'BoxGeometry') {
+          vol = (2 * scale.x) * (2 * scale.y) * (2 * scale.z);
+        }
+        // Sphere (radius=1)
+        else if (type === 'SphereGeometry') {
+          vol = (4 / 3) * Math.PI * Math.pow(scale.x, 3);
+        }
+        // Cylinder (radius=1, height=2)
+        else if (type === 'CylinderGeometry') {
+          vol = Math.PI * Math.pow(scale.x, 2) * (2 * scale.y);
+        }
+        // Cone (radius=1, height=2)
+        else if (type === 'ConeGeometry') {
+          vol = (1 / 3) * Math.PI * Math.pow(scale.x, 2) * (2 * scale.y);
+        }
+        // Torus (radius=1, tube=0.3)
+        else if (type === 'TorusGeometry') {
+          vol = 2 * Math.pow(Math.PI, 2) * Math.pow(0.3 * scale.y, 2) * (1 * scale.x);
+        }
+        totalVol += vol;
+      }
+    });
+
+    setVolume(totalVol > 0 ? parseFloat(totalVol.toFixed(3)) : null);
   };
 
   const getActiveDisplay = () => {
@@ -126,6 +133,21 @@ export const MeasurementsHUD: React.FC<MeasurementsHUDProps> = ({ engine }) => {
     }
 
     if (selectedMesh) {
+      // Calculate dimensional bounding size
+      let w = 0, h = 0, d = 0;
+      if (selectedMesh instanceof THREE.Mesh) {
+        w = 2 * selectedMesh.scale.x;
+        h = 2 * selectedMesh.scale.y;
+        d = 2 * selectedMesh.scale.z;
+      } else {
+        const bbox = new THREE.Box3().setFromObject(selectedMesh);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        w = size.x;
+        h = size.y;
+        d = size.z;
+      }
+
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <div>
@@ -137,9 +159,9 @@ export const MeasurementsHUD: React.FC<MeasurementsHUDProps> = ({ engine }) => {
             </div>
           </div>
           <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', display: 'flex', gap: '8px' }}>
-            <span>W: {(2 * selectedMesh.scale.x).toFixed(1)}m</span>
-            <span>H: {(2 * selectedMesh.scale.y).toFixed(1)}m</span>
-            <span>D: {(2 * selectedMesh.scale.z).toFixed(1)}m</span>
+            <span>W: {w.toFixed(1)}m</span>
+            <span>H: {h.toFixed(1)}m</span>
+            <span>D: {d.toFixed(1)}m</span>
           </div>
         </div>
       );
