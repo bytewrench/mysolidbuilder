@@ -1,7 +1,7 @@
 # MySolidBuilder 3D Web Editor
 
 > A next-generation, high-fidelity web-based 3D modeling application inspired by SketchUp and MySolidBuilder. Built with **React**, **TypeScript**, and **Three.js (WebGL)**.
-
+[🚀 Try the Live Version](https://mysolidbuilder.com/)
 ---
 
 ## 🚀 Key Features
